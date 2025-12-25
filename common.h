@@ -13,7 +13,7 @@
 #include <time.h>
 
 //stałe konfiguracyjne do symulacji
-#define N_PARK_CAPACITY 20 //max osob w parku
+#define N_PARK_CAPACITY 3 //max osob w parku
 #define M_group_size 5 // liczebność grupy
 #define X1_BRIDGE_CAP 3 // pojemność mostu
 #define X1_TOWER_CAP 3 // pojemność wieży
@@ -45,4 +45,30 @@ union semun {
     unsigned short *array;
 };
 
+// funkcje pomocnicze do semaforow
+// opuszczenie semafora (czekaj / P / wait)
+void sem_lock(int sem_id, int sem_num) {
+    struct sembuf operacja;
+    operacja.sem_num = sem_num; // ktory semafor (0 = kasa)
+    operacja.sem_op = -1;       // zmniejsz o 1 (zajmij miejsce)
+    operacja.sem_flg = 0;
+    
+    if (semop(sem_id, &operacja, 1) == -1) {
+        perror("Błąd sem_lock");
+        exit(1);
+    }
+}
+
+// podniesienie semafora (sygnal / V / signal)
+void sem_unlock(int sem_id, int sem_num) {
+    struct sembuf operacja;
+    operacja.sem_num = sem_num;
+    operacja.sem_op = 1;        // zwieksz o 1 (zwolnij miejsce)
+    operacja.sem_flg = 0;
+    
+    if (semop(sem_id, &operacja, 1) == -1) {
+        perror("Błąd sem_unlock");
+        exit(1);
+    }
+}
 #endif

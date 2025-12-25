@@ -71,8 +71,40 @@ int main() {
     }
     printf("[MAIN] Zestaw semaforów utworzony (ID: %d).\n", sem_id);
 
+    //ustawienie wartosci poczatkowych
+    union semun arg;
+
+    // semafor 0 kasa - wpuszcza N osob
+    arg.val = N_PARK_CAPACITY;
+    semctl(sem_id, 0, SETVAL, arg);
+
     // petla glowna
     printf("[MAIN] System gotowy. Naciśnij Ctrl + C aby zakończyć.\n");
+
+    printf("[MAIN] Uruchamiam 10 turystów...\n");
+
+    for (int i = 1; i <= 10; i++) {
+        pid_t pid = fork(); // rozwidlenie procesu
+
+        if (pid == 0){
+            //jestesmy w procesie dziecku, dziecko ma kopie pamieci rodzica, ale my chcemy uruchomic inny program
+
+            char id_buff[10];
+            sprintf(id_buff, "%d", i); //zamiany liczby i na napis
+
+            // execl podmienia kod procesu na plik "turysta"
+            // execl(sciezka, nazwa_dla_systemu, argument1, NULL)
+            execl("./turysta", "turysta", id_buff, NULL);
+
+            // jesli execl zadziala, kod ponizej zniknie
+            // jesli tu doszlismy, to znaczy, ze execl zawiodl
+            perror("[MAIN-CHILD] Błąd execl! Czy skompilowaleś turysta.c?");
+            exit(1);
+        }
+
+        // dajemy male opoznienie zeby komunikaty byly bardziej czytelne
+        usleep(100000); 
+    }
     
     while(1) {
         // tutaj w przyszłości będzie sprawdzanie stanu symulacji
