@@ -30,7 +30,27 @@ int main(int argc, char* argv[]) {
 
     // sekcja krytyczna, jestesmy w parku
     park->people_in_park++; 
-    printf("[TURYSTA %d] Wszedłem! (Liczba osób: %d/%d)\n", id, park->people_in_park, N_PARK_CAPACITY);
+    printf("[TURYSTA %d] Wszedłem do parku. Ide do punktu zbiorki.\n", id);
+
+    // logika zbiorki
+
+    // zgloszenie sie do grupy
+    park->people_in_queue++;
+    printf("[TURYSTA %d] Czekam na przewodnika. (Grupa: %d/%d)\n", id, park->people_in_queue, M_GROUP_SIZE);
+
+    // sprawdzenie czy jestesmy ostatni w grupie
+    if (park->people_in_queue == M_GROUP_SIZE) {
+        printf("[TURYSTA %d] Komplet! Budzę przewodnika!\n", id);
+        
+        park->people_in_queue = 0; // zerujemy licznik dla nastepnej grupy
+        sem_unlock(sem_id, 1);     // budzimy przewodnika semafor 1
+    }
+
+    // czekamy na znak od przewodnika
+    sem_lock(sem_id, 2);
+
+    // koniec czekania - wycieczka
+    printf("[TURYSTA %d] Zwiedzam z przewodnikiem!\n", id);
 
     //symulujemy ze turysta cos robi
     sleep(2);

@@ -13,8 +13,8 @@
 #include <time.h>
 
 //stałe konfiguracyjne do symulacji
-#define N_PARK_CAPACITY 3 //max osob w parku
-#define M_group_size 5 // liczebność grupy
+#define N_PARK_CAPACITY 10 //max osob w parku
+#define M_GROUP_SIZE 5 // liczebność grupy
 #define X1_BRIDGE_CAP 3 // pojemność mostu
 #define X1_TOWER_CAP 3 // pojemność wieży
 #define X1_FERRY_CAP 3 // pojemność promu
@@ -27,7 +27,8 @@
 
 struct ParkSharedMemory {
     int people_in_park;
-    int people_in_query;
+    
+    int people_in_queue;
 
     int bridge_current_count;
 

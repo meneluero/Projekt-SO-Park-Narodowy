@@ -18,7 +18,7 @@ void cleanup() {
     }
 
     if(sem_id != -1) {
-        if (shmctl(sem_id, 0, IPC_RMID) == -1){
+        if (semctl(sem_id, 0, IPC_RMID) == -1){
             perror("[MAIN] Błąd usuwania semaforów");
         } else {
             printf("[MAIN] Semafory usunięte.\n");
@@ -71,12 +71,38 @@ int main() {
     }
     printf("[MAIN] Zestaw semaforów utworzony (ID: %d).\n", sem_id);
 
+    printf("[MAIN] Zatrudniam %d przewodników...\n", P_guides);
+
+    for(int i = 1; i <= P_guides; i++){
+        pid_t pid = fork();
+        if (pid == 0 ){
+            // proces dziecko -> zamienia sie w przewodnika
+            char id_buff[10];
+            sprintf(id_buff, "%d", i);
+            execl("./przewodnik", "przewodnik", id_buff, NULL);
+            perror("[MAIN] Blad execl przewodnik"); // wykona sie tylko jak execl padnie
+            exit(1);
+        }
+    }
     //ustawienie wartosci poczatkowych
     union semun arg;
 
-    // semafor 0 kasa - wpuszcza N osob
-    arg.val = N_PARK_CAPACITY;
+    //kasa - wpuszcza N osob
+    arg.val = N_PARK_CAPACITY; 
     semctl(sem_id, 0, SETVAL, arg);
+
+    // przewodnik - czeka na sygnal
+    arg.val = 0;
+    semctl(sem_id, 1, SETVAL, arg);
+
+    // zbiórka - turysci czekaja na przewodnika
+    arg.val = 0;
+    semctl(sem_id, 2, SETVAL, arg);
+
+    // reszta na razie 0
+    arg.val = 0;
+    semctl(sem_id, 3, SETVAL, arg);
+    semctl(sem_id, 4, SETVAL, arg);
 
     // petla glowna
     printf("[MAIN] System gotowy. Naciśnij Ctrl + C aby zakończyć.\n");
