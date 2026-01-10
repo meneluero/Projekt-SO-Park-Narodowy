@@ -103,8 +103,9 @@ int main(int argc, char* argv[]) {
     // symulacja zwiedzania (przewodnik prowadzi po trasie)
     // -----------------------------------------------------------
     
-    // symulujemy ze turysta cos robi
-    sleep(2 + (rand() % 3)); // 2-4 sekundy "zwiedzania"
+    // turysta nie decyduje sam o czasie zwiedzania
+    // czeka na semaforze nr 3 (SEM_KONIEC_WYCIECZKI) az przewodnik oglosci koniec
+    sem_lock(sem_id, SEM_KONIEC_WYCIECZKI);
     
     // -----------------------------------------------------------
     // logika wyjscia z parku

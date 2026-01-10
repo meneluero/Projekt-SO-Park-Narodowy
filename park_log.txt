@@ -90,3 +90,26 @@
 [KASJER 1] Raport: Przewodnik 1 zakończył wycieczkę (trasa 1, 5 osób)
 [KASJER 1] Turysta 9 - wyjście (czas w parku: 15:57:33)
 [KASJER 1] Raport: Przewodnik 2 zakończył wycieczkę (trasa 1, 5 osób)
+[KASJER 1] Rozpoczęcie pracy
+[KASJER 1] Turysta 1 (wiek: 62) - bilet normalny
+[KASJER 1] Turysta 2 (wiek: 68) - bilet normalny
+[KASJER 1] Turysta 3 (wiek: 8) - bilet normalny
+[KASJER 1] Turysta 4 (wiek: 69) - bilet normalny
+[KASJER 1] Turysta 5 (wiek: 44) - bilet normalny
+[KASJER 1] Turysta 6 (wiek: 39) - bilet normalny
+[KASJER 1] Turysta 7 (wiek: 14) - bilet normalny
+[KASJER 1] Turysta 8 (wiek: 32) - bilet normalny
+[KASJER 1] Turysta 9 (wiek: 37) - bilet normalny
+[KASJER 1] Turysta 10 (wiek: 30) - bilet normalny
+[KASJER 1] Raport: Przewodnik 1 zakończył wycieczkę (trasa 2, 5 osób)
+[KASJER 1] Turysta 3 - wyjście (czas w parku: 14:22:21)
+[KASJER 1] Turysta 5 - wyjście (czas w parku: 14:22:21)
+[KASJER 1] Turysta 1 - wyjście (czas w parku: 14:22:21)
+[KASJER 1] Turysta 2 - wyjście (czas w parku: 14:22:21)
+[KASJER 1] Turysta 4 - wyjście (czas w parku: 14:22:21)
+[KASJER 1] Raport: Przewodnik 2 zakończył wycieczkę (trasa 2, 5 osób)
+[KASJER 1] Turysta 6 - wyjście (czas w parku: 14:22:24)
+[KASJER 1] Turysta 8 - wyjście (czas w parku: 14:22:24)
+[KASJER 1] Turysta 9 - wyjście (czas w parku: 14:22:24)
+[KASJER 1] Turysta 7 - wyjście (czas w parku: 14:22:24)
+[KASJER 1] Turysta 10 - wyjście (czas w parku: 14:22:24)

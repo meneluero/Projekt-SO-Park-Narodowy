@@ -21,6 +21,12 @@
 #define X1_FERRY_CAP 3 // pojemność promu
 #define P_guides 3 // liczba przewodników
 
+// definicje ideksow semaforow
+#define SEM_KASA 0 // limit wejsc do parku
+#define SEM_PRZEWODNIK 1 // przewodnik czeka na skompletowanie grupy
+#define SEM_START_WYCIECZKI 2 // turysci czekaja na start wycieczki
+#define SEM_KONIEC_WYCIECZKI 3 // turysci czekaja na koniec wycieczki
+
 // klucze ipc
 #define SHM_KEY_ID 1234
 #define SEM_KEY_ID 5678

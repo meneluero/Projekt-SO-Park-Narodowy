@@ -85,6 +85,14 @@ int main(int argc, char* argv[]) {
         int tour_time = 3 + (rand() % 4); // 3-6 sekund
         printf("[PRZEWODNIK %d] Oprowadzam wycieczkę (czas: %ds)...\n", id, tour_time);
         sleep(tour_time);
+
+        // zwalniamy turystów
+        printf("[PRZEWODNIK %d] Koniec czasu! Zwalniam grupę do domu.\n", id);
+        
+        // budzimy kazdego turyste z grupy osobno
+        for (int k = 0; k < M_GROUP_SIZE; k++) {
+            sem_unlock(sem_id, SEM_KONIEC_WYCIECZKI); // semafor nr 3
+        }
         
         // koniec wycieczki
         printf("[PRZEWODNIK %d] Koniec wycieczki. Grupa wraca do kasy.\n", id);
