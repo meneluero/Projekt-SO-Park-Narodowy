@@ -26,6 +26,7 @@
 #define SEM_PRZEWODNIK 1 // przewodnik czeka na skompletowanie grupy
 #define SEM_START_WYCIECZKI 2 // turysci czekaja na start wycieczki
 #define SEM_KONIEC_WYCIECZKI 3 // turysci czekaja na koniec wycieczki
+#define SEM_MOST_MUTEX 4 // mutex dla mostu do ochrony danych
 
 // klucze ipc
 #define SHM_KEY_ID 1234
@@ -54,6 +55,7 @@ struct ParkSharedMemory {
     
     // system grupowania
     int people_in_queue; // ile osob czeka na przewodnika
+    int group_ages[M_GROUP_SIZE]; // turysci zapisuja tu swoj wiek przy wejsciu do kolejki
     
     // atrakcje - stany
     int bridge_current_count; // ile osob na moscie

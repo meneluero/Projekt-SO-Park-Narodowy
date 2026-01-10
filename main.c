@@ -113,7 +113,10 @@ int main() {
     // reszta na razie 0 (do uzupelnienia)
     arg.val = 0;
     semctl(sem_id, 3, SETVAL, arg);
-    semctl(sem_id, 4, SETVAL, arg);
+
+    // mutex dla mostu (musi byc otwarty na wejsciu dlatego 1)
+    arg.val = 1;
+    semctl(sem_id, SEM_MOST_MUTEX, SETVAL, arg);
     
     // -----------------------------------------------------------
     // tworzenie kolejki komunikatow (IPC - drugi mechanizm!)

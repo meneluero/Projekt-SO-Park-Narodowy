@@ -81,9 +81,11 @@ int main(int argc, char* argv[]) {
     // na razie upraszczamy - vip tez w grupach (do zrobienia: solo zwiedzanie VIP)
     
     // zgloszenie sie do grupy
+    park->group_ages[park->people_in_queue] = age;
+
     park->people_in_queue++;
-    printf("[TURYSTA %d] Czekam na przewodnika. (Grupa: %d/%d)\n", 
-           id, park->people_in_queue, M_GROUP_SIZE);
+
+    printf("[TURYSTA %d] Czekam na przewodnika. (Grupa: %d/%d)\n", id, park->people_in_queue, M_GROUP_SIZE);
     
     // sprawdzenie czy jestesmy ostatni w grupie (komplet)
     if (park->people_in_queue == M_GROUP_SIZE) {
