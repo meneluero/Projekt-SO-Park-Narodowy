@@ -29,6 +29,8 @@
 #define SEM_MOST_MUTEX 4 // mutex dla mostu do ochrony danych
 #define SEM_WIEZA_LIMIT 5 // limit pojemnosci wiezy
 #define SEM_WIEZA_MUTEX 6 // mutex do ochrony tablicy danych
+#define SEM_PROM_LIMIT 7 // limit pojemnosci promu
+#define SEM_PROM_MUTEX 8 // mutex do ochrony danych promu
 
 // klucze ipc
 #define SHM_KEY_ID 1234
@@ -91,11 +93,14 @@ union semun {
 // opuszczenie semafora (czekaj / P / wait)
 void sem_lock(int sem_id, int sem_num) {
     struct sembuf operacja;
-    operacja.sem_num = sem_num; // ktory semafor (0 = kasa)
-    operacja.sem_op = -1;       // zmniejsz o 1 (zajmij miejsce)
+    operacja.sem_num = sem_num;
+    operacja.sem_op = -1;
     operacja.sem_flg = 0;
     
-    if (semop(sem_id, &operacja, 1) == -1) {
+    while (semop(sem_id, &operacja, 1) == -1) {
+        if (errno == EINTR) {
+            continue; // sprobuj ponownie po przerwaniu sygnalem
+        }
         perror("Błąd sem_lock");
         exit(1);
     }
@@ -105,10 +110,13 @@ void sem_lock(int sem_id, int sem_num) {
 void sem_unlock(int sem_id, int sem_num) {
     struct sembuf operacja;
     operacja.sem_num = sem_num;
-    operacja.sem_op = 1;        // zwieksz o 1 (zwolnij miejsce)
+    operacja.sem_op = 1;
     operacja.sem_flg = 0;
     
-    if (semop(sem_id, &operacja, 1) == -1) {
+    while (semop(sem_id, &operacja, 1) == -1) {
+        if (errno == EINTR) {
+            continue;
+        }
         perror("Błąd sem_unlock");
         exit(1);
     }

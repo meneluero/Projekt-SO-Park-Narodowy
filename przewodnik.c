@@ -278,6 +278,136 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
     printf("[WIEŻA] Wszyscy chętni zwiedzili wieżę. Idziemy dalej.\n");
 }
 
+// funkcja obslugi promu
+void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int sem_id, int ages[]) {
+    char* bank_name = (start_bank == 0) ? "Brzeg C (Wyspa)" : "Brzeg A (Ląd)"; 
+    printf("[PROM] Przewodnik %d dociera do przeprawy promowej (%s).\n", guide_id, bank_name);
+
+    // sprawdzenie i sciagniecie promu
+    sem_lock(sem_id, SEM_PROM_MUTEX);
+    if (park->ferry_position != start_bank) {
+        printf("[PROM] Prom jest na drugim brzegu. Przewodnik %d przywołuje prom...\n", guide_id);
+        sem_unlock(sem_id, SEM_PROM_MUTEX);
+        usleep(500000); // czas na doplyniecie pustego promu
+        sem_lock(sem_id, SEM_PROM_MUTEX);
+        park->ferry_position = start_bank;
+        printf("[PROM] Prom przypłynął.\n");
+    } else {
+        printf("[PROM] Prom czeka na miejscu.\n");
+    }
+    
+    // przewodnik wchodzi (blokuje 1 miejsce z limitu)
+    // przyjmijmy: zajmuje slot, wchodzi pierwszy
+    park->ferry_current_count = 1; 
+    sem_unlock(sem_id, SEM_PROM_MUTEX);
+
+    // przygotowanie listy pasazerow (vip priorytet + parowanie dzieci)
+    int processed[M_GROUP_SIZE];
+    for(int i=0; i<M_GROUP_SIZE; i++) processed[i] = 0;
+    
+    int remaining = M_GROUP_SIZE;
+    
+    // sortowanie kolejki wejscia (vip/seniorzy przodem)
+    // tworzymy tablice indeksow posortowana wg priorytetu
+    int priority_indices[M_GROUP_SIZE];
+    int p_count = 0;
+    
+    // najpierw vip/seniorzy
+    for(int i=0; i<M_GROUP_SIZE; i++) {
+        if(ages[i] > 60) priority_indices[p_count++] = i;
+    }
+    // potem reszta
+    for(int i=0; i<M_GROUP_SIZE; i++) {
+        if(ages[i] <= 60) priority_indices[p_count++] = i;
+    }
+
+    // petla kursowania promu
+    while (remaining > 0) {
+        int capacity_left = X3_FERRY_CAP; // limit miejsc dla turystow
+        int current_batch = 0; // ile osob wsiadlo teraz
+        
+        printf("[PROM] Rozpoczynam załadunek (Wolnych miejsc: %d)...\n", capacity_left);
+
+        // algorytm zaladunku z listy priorytetowej
+        while (capacity_left > 0 && current_batch < remaining) {
+             int t1_idx = -1;
+             int t2_idx = -1;
+
+             // znajdz pierwszego nieobsluzonego z listy priorytetow
+             for(int k=0; k<M_GROUP_SIZE; k++) {
+                 int real_idx = priority_indices[k];
+                 if(!processed[real_idx]) { 
+                     t1_idx = real_idx; 
+                     break; 
+                 } 
+             }
+             
+             if (t1_idx == -1) break; // brak chetnych
+
+             // czy to dziecko < 15
+             if (ages[t1_idx] < 15) {
+                 // szukaj opiekuna - ignorujemy priorytet, bierzemy pierwszego wolnego
+                 for(int i=0; i<M_GROUP_SIZE; i++) {
+                     if(!processed[i] && i!=t1_idx && ages[i] >= 15) { 
+                         t2_idx = i; 
+                         break; 
+                     } 
+                 }
+                 
+                 // jesli mamy opiekuna i miejsce na 2 osoby
+                 if (t2_idx != -1 && capacity_left >= 2) {
+                     printf("[PROM] Wchodzą: Dziecko (%d) + Opiekun (%d)\n", ages[t1_idx], ages[t2_idx]);
+                     processed[t1_idx] = 1; processed[t2_idx] = 1;
+                     remaining -= 2; capacity_left -= 2; current_batch += 2;
+                 } 
+                 // jesli brak opiekuna lub miejsca ale jest miejsce na 1 osobe -> bierze przewodnik
+                 else if (t2_idx == -1 && capacity_left >= 1) {
+                     printf("[PROM] Dziecko (%d) pod opieką przewodnika.\n", ages[t1_idx]);
+                     processed[t1_idx] = 1;
+                     remaining -= 1; capacity_left -= 1; current_batch += 1;
+                 } else {
+                     // dziecko z opiekunem nie zmiesci sie w tej turze szukamy doroslego singla
+                     // upraszczajac: przerywamy ladowanie tej tury
+                     break; 
+                 }
+             } else {
+                 // dorosly
+                 printf("[PROM] Wchodzi turysta (%d)\n", ages[t1_idx]);
+                 processed[t1_idx] = 1;
+                 remaining--; capacity_left--; current_batch++;
+             }
+        }
+
+        if (current_batch == 0 && remaining > 0) {
+            // zabezpieczenie przed petla nieskonczona (np. same dzieci i brak miejsc)
+            printf("[PROM] Błąd logistyczny! Awaryjny transport.\n");
+            break; 
+        }
+
+        // plyniemy
+        printf("[PROM] Prom odbija od brzegu z %d pasażerami i przewodnikiem.\n", current_batch);
+        usleep(400000 + (rand() % 300000)); // czas przeprawy
+        
+        // zmiana brzegu w pamieci
+        sem_lock(sem_id, SEM_PROM_MUTEX);
+        park->ferry_position = (start_bank == 0) ? 1 : 0;
+        sem_unlock(sem_id, SEM_PROM_MUTEX);
+        
+        printf("[PROM] Dopłyneliśmy na drugi brzeg. Wysiadanie.\n");
+        
+        // jesli zostaly osoby prom musi wrocic "na pusto" po reszte
+        if (remaining > 0) {
+            printf("[PROM] Prom wraca na pusto po resztę grupy...\n");
+            usleep(400000); // czas powrotu
+            sem_lock(sem_id, SEM_PROM_MUTEX);
+            park->ferry_position = start_bank; // wrocil
+            sem_unlock(sem_id, SEM_PROM_MUTEX);
+        }
+    }
+    printf("[PROM] Cała grupa przeprawiona.\n");
+}
+
+
 int main(int argc, char* argv[]) {
     // walidacja
     if (argc < 2) {
@@ -301,7 +431,7 @@ int main(int argc, char* argv[]) {
     }
     
     // pobranie id semaforow
-    int sem_id = semget(SEM_KEY_ID, 5, 0666);
+    int sem_id = semget(SEM_KEY_ID, 9, 0666);
     if (sem_id == -1) {
         perror("[PRZEWODNIK] Błąd semget");
         exit(1);
@@ -329,11 +459,9 @@ int main(int argc, char* argv[]) {
         // kopiujemy wiek turysty od razu po przebudzeniu
         // zanim nowi turysci nadpisza pamiec wspoldzielona
         int current_group_ages[M_GROUP_SIZE];
-        pid_t current_group_pids[M_GROUP_SIZE];
 
         for(int i=0; i<M_GROUP_SIZE; i++) {
             current_group_ages[i] = park->group_ages[i];
-            current_group_pids[i] = park->group_pids[i];
         }
 
         // przejecie grupy
@@ -357,19 +485,44 @@ int main(int argc, char* argv[]) {
             printf("[PRZEWODNIK %d] Trasa: K → A → B → C → K\n", id);
             // do zrobienia: implementacja trasy 1
             cross_bridge(id, 0, park, sem_id, current_group_ages);
+
+            // pobieramy pid dla wiezy
+            pid_t current_group_pids[M_GROUP_SIZE];
+            for(int i=0; i<M_GROUP_SIZE; i++) current_group_pids[i] = park->group_pids[i];
+
             visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
-            // take_ferry(id);
+
+            take_ferry(id, 0, park, sem_id, current_group_ages);
         } else {
             printf("[PRZEWODNIK %d] Trasa: K → C → B → A → K\n", id);
             // do zrobienia: implementacja trasy 2
-            // take_ferry(id);
+            take_ferry(id, 1, park, sem_id, current_group_ages);
+
+            // pobieramy pid dla wiezy
+            pid_t current_group_pids[M_GROUP_SIZE];
+            for(int i=0; i<M_GROUP_SIZE; i++) current_group_pids[i] = park->group_pids[i];
+
             visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
+
             cross_bridge(id, 1, park, sem_id, current_group_ages);
         }
         
         // symulacja wycieczki
         int tour_time = 3 + (rand() % 4); // 3-6 sekund
         printf("[PRZEWODNIK %d] Oprowadzam wycieczkę (czas: %ds)...\n", id, tour_time);
+
+        int has_young_children = 0;
+        for(int i=0; i<M_GROUP_SIZE; i++) {
+            if(current_group_ages[i] < 12) {
+                has_young_children = 1;
+                break;
+            }
+        }
+
+        if(has_young_children) {
+            tour_time = (int)(tour_time * 1.5);
+            printf("[PRZEWODNIK %d] Grupa z dziećmi < 12 lat - czas wydłużony do %ds.\n", id, tour_time);
+        }
         sleep(tour_time);
 
         // zwalniamy turystów

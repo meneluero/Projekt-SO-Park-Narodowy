@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
     // przylaczenie pamieci dzielonej
     // turysta nie tworzy (IPC_CREAT), on tylko pobiera (shmget) istniejaca
     int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0666);
-    int sem_id = semget(SEM_KEY_ID, 5, 0666);
+    int sem_id = semget(SEM_KEY_ID, 9, 0666);
     int msg_id = msgget(MSG_KEY_ID, 0666);
     
     if (shm_id == -1 || sem_id == -1 || msg_id == -1) {
