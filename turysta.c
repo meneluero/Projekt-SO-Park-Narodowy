@@ -1,7 +1,22 @@
 #include "common.h"
 #include <string.h>
+#include <signal.h>
+
+// handler sygnalu ewakuacji
+void tower_evacuation_handler(int sig) {
+    char *msg = "\n[TURYSTA] Ewakuacja! Zbiegam z wieży! (SIGUSR1)\n";
+    write(STDOUT_FILENO, msg, strlen(msg));
+    // sygnal przerwie sleep() wiec turystna "wybiegnie" naturalnie
+}
 
 int main(int argc, char* argv[]) {
+    // rejestracja handlera
+    struct sigaction sa;
+    sa.sa_handler = tower_evacuation_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // nie uzywamy SA_RESTART zeby sleep() zostal przerwany
+    sigaction(SIGUSR1, &sa, NULL);
+
     // argv[1] to bedzie numer naszego turysty przekazanego przez maina
     if (argc < 2) {
         printf("[TURYSTA] Błąd: Brak ID turysty! Uruchamiaj przez main.\n");
@@ -82,6 +97,8 @@ int main(int argc, char* argv[]) {
     
     // zgloszenie sie do grupy
     park->group_ages[park->people_in_queue] = age;
+
+    park->group_pids[park->people_in_queue] = getpid(); // zapisujemy pid
 
     park->people_in_queue++;
 

@@ -17,8 +17,8 @@
 #define N_PARK_CAPACITY 10 //max osob w parku
 #define M_GROUP_SIZE 5 // liczebność grupy
 #define X1_BRIDGE_CAP 3 // pojemność mostu
-#define X1_TOWER_CAP 3 // pojemność wieży
-#define X1_FERRY_CAP 3 // pojemność promu
+#define X2_TOWER_CAP 3 // pojemność wieży
+#define X3_FERRY_CAP 3 // pojemność promu
 #define P_guides 3 // liczba przewodników
 
 // definicje ideksow semaforow
@@ -27,6 +27,8 @@
 #define SEM_START_WYCIECZKI 2 // turysci czekaja na start wycieczki
 #define SEM_KONIEC_WYCIECZKI 3 // turysci czekaja na koniec wycieczki
 #define SEM_MOST_MUTEX 4 // mutex dla mostu do ochrony danych
+#define SEM_WIEZA_LIMIT 5 // limit pojemnosci wiezy
+#define SEM_WIEZA_MUTEX 6 // mutex do ochrony tablicy danych
 
 // klucze ipc
 #define SHM_KEY_ID 1234
@@ -56,6 +58,7 @@ struct ParkSharedMemory {
     // system grupowania
     int people_in_queue; // ile osob czeka na przewodnika
     int group_ages[M_GROUP_SIZE]; // turysci zapisuja tu swoj wiek przy wejsciu do kolejki
+    pid_t group_pids[M_GROUP_SIZE]; // pid turystow w grupie
     
     // atrakcje - stany
     int bridge_current_count; // ile osob na moscie
@@ -64,7 +67,7 @@ struct ParkSharedMemory {
     int bridge_waiting_ak; // ile czeka A->K
     
     int tower_current_count; // ile osob na wiezy
-    int tower_visitors[20]; // tablica PID turystow w wiezy (dla sygnalu)
+    pid_t tower_visitors[N_PARK_CAPACITY]; // pid osob aktualnie na wiezy
     
     int ferry_current_count; // ile osob na promie
     int ferry_position; // pozycja promu (0=brzeg A, 1=brzeg B)

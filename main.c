@@ -79,16 +79,9 @@ int main() {
     memset(park, 0, sizeof(struct ParkSharedMemory)); // wyzerowanie calej struktury
     park->ferry_position = 0; // prom na brzegu A
     
-    // -----------------------------------------------------------
+
     // tworzenie semaforow
-    // -----------------------------------------------------------
-    // zestaw 5 semaforow:
-    // 0: kasa (pojemnosc parku N)
-    // 1: przewodnik (czeka na grupe)
-    // 2: zbiorka (turyści czekaja na przewodnika)
-    // 3: most (do uzupelnienia)
-    // 4: pomocniczy (do uzupelnienia)
-    sem_id = semget(SEM_KEY_ID, 5, IPC_CREAT | 0666);
+    sem_id = semget(SEM_KEY_ID, 7, IPC_CREAT | 0666);
     if (sem_id == -1) {
         perror("[MAIN] Błąd semget");
         exit(1);
@@ -117,6 +110,14 @@ int main() {
     // mutex dla mostu (musi byc otwarty na wejsciu dlatego 1)
     arg.val = 1;
     semctl(sem_id, SEM_MOST_MUTEX, SETVAL, arg);
+
+    // limit pojemnosci wiezy
+    arg.val = X2_TOWER_CAP;
+    semctl(sem_id, SEM_WIEZA_LIMIT, SETVAL, arg);
+
+    // mutex dla danych wiezy
+    arg.val = 1;
+    semctl(sem_id, SEM_WIEZA_MUTEX, SETVAL, arg);
     
     // -----------------------------------------------------------
     // tworzenie kolejki komunikatow (IPC - drugi mechanizm!)

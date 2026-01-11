@@ -1,5 +1,6 @@
 #include "common.h"
 #include <string.h>
+#include <signal.h>
 
 // funkcja pomocnicza (wejscie na most)
 void enter_bridge(int id, int direction, struct ParkSharedMemory *park, int sem_id){
@@ -124,6 +125,159 @@ void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, in
     printf("[MOST] Cała grupa przeszła przez most (%s).\n", dir_name);
 }
 
+// funkcja pomocnicza do rejestracji wejscia na wieze (zabezpieczona mutexem)
+void register_tower_entry(struct ParkSharedMemory *park, int sem_id, pid_t tourist_pid) {
+    sem_lock(sem_id, SEM_WIEZA_MUTEX);
+    
+    // szukamy wolnego slotu w tablicy pid
+    for (int i = 0; i < N_PARK_CAPACITY; i++) {
+        if (park->tower_visitors[i] == 0) {
+            park->tower_visitors[i] = tourist_pid;
+            break;
+        }
+    }
+    park->tower_current_count++;
+    
+    sem_unlock(sem_id, SEM_WIEZA_MUTEX);
+}
+
+// funkcja pomocnicza do wyrejestrowania (mutex)
+void unregister_tower_exit(struct ParkSharedMemory *park, int sem_id, pid_t tourist_pid) {
+    sem_lock(sem_id, SEM_WIEZA_MUTEX);
+    
+    for (int i = 0; i < N_PARK_CAPACITY; i++) {
+        if (park->tower_visitors[i] == tourist_pid) {
+            park->tower_visitors[i] = 0; // czyscimy slot
+            break;
+        }
+    }
+    if (park->tower_current_count > 0) park->tower_current_count--;
+    
+    sem_unlock(sem_id, SEM_WIEZA_MUTEX);
+}
+
+// struktura pomocnicza do sortowania kolejki
+typedef struct {
+    int index;
+    int age;
+    pid_t pid;
+    int is_vip;
+} TouristInfo;
+
+// kompletna funkcja wiezy
+void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ages[], pid_t pids[]) {
+    printf("[WIEŻA] Przewodnik %d dociera pod wieżę widokową.\n", guide_id);
+
+    // filtracja: kto zostaje na dole
+    // potrzebujemy tablicy flag: 1 = wchodzi, 0 = zostaje
+    int can_enter[M_GROUP_SIZE];
+    for(int i=0; i<M_GROUP_SIZE; i++) can_enter[i] = 1;
+    
+    int rejected_count = 0;
+
+    // szukamy dzieci < 5 lat
+    for (int i = 0; i < M_GROUP_SIZE; i++) {
+        if (ages[i] < 5) {
+            printf("[WIEŻA] Turysta %d (lat %d) jest za mały (<5 lat). Zostaje na dole.\n", pids[i], ages[i]);
+            can_enter[i] = 0;
+            rejected_count++;
+            
+            // musimy znalezc mu opiekuna (osoba >= 15 lat) ktora tez zostanie
+            int guardian_found = 0;
+            // najpierw szukamy kogos kto jeszcze wchodzi (zeby go wykluczyc)
+            for (int j = 0; j < M_GROUP_SIZE; j++) {
+                if (i != j && can_enter[j] == 1 && ages[j] >= 15) {
+                    can_enter[j] = 0; // opiekun tez zostaje
+                    printf("[WIEŻA] Turysta %d (lat %d) zostaje jako opiekun dla dziecka.\n", pids[j], ages[j]);
+                    guardian_found = 1;
+                    rejected_count++;
+                    break;
+                }
+            }
+            if (!guardian_found) {
+                printf("[WIEŻA] UWAGA: Dziecko bez dedykowanego opiekuna! Zostaje z przewodnikiem.\n");
+            }
+        }
+    }
+
+    if (rejected_count == M_GROUP_SIZE) {
+        printf("[WIEŻA] Nikt z grupy nie może wejść na wieżę! Idziemy dalej.\n");
+        return;
+    }
+
+    // sortowanie vip
+    // tworzymy liste indeksow do wejscia
+    int entry_order[M_GROUP_SIZE];
+    int count_to_enter = 0;
+    
+    // najpierw dodajemy vip-ow (dla symulacji przyjmijmy vip jesli wiek dzieli sie przez 10 lub > 60)
+    // uproszczenie: uznajemy osoby starsze > 60 za priorytet
+    for (int i = 0; i < M_GROUP_SIZE; i++) {
+        if (can_enter[i] && ages[i] > 60) {
+            entry_order[count_to_enter++] = i;
+            printf("[WIEŻA] Turysta %d (lat %d) ma priorytet (Senior/VIP).\n", pids[i], ages[i]);
+        }
+    }
+    // potem reszta
+    for (int i = 0; i < M_GROUP_SIZE; i++) {
+        if (can_enter[i] && ages[i] <= 60) {
+            entry_order[count_to_enter++] = i;
+        }
+    }
+
+    // proces wchodzenia na wieze
+    printf("[WIEŻA] Przewodnik czeka na dole. Turyści wchodzą...\n");
+
+    for (int k = 0; k < count_to_enter; k++) {
+        int idx = entry_order[k];
+        pid_t t_pid = pids[idx];
+        int t_age = ages[idx];
+
+        // czekamy na miejsce na wiezy (semafor licznikowy)
+        sem_lock(sem_id, SEM_WIEZA_LIMIT);
+
+        // rejestrujemy pid (sekcja krytyczna mutex)
+        register_tower_entry(park, sem_id, t_pid);
+        printf("[WIEŻA] Turysta %d (lat %d) wchodzi na górę. (Liczba osób: %d)\n", 
+               t_pid, t_age, park->tower_current_count);
+
+        // symulacja zagrozenia
+        if ((rand() % 100) < 2) {
+            printf("\n[WIEŻA] Awaria konstrukcji! Przewodnik zarządza ewakuację!\n");
+            
+            // wysylamy sygnal do wszystkich obecnie bedacych na wiezy
+            sem_lock(sem_id, SEM_WIEZA_MUTEX);
+            for(int j=0; j<N_PARK_CAPACITY; j++) {
+                if (park->tower_visitors[j] != 0) {
+                    kill(park->tower_visitors[j], SIGUSR1);
+                    printf("[WIEŻA] Przewodnik wysłał SIGUSR1 do %d\n", park->tower_visitors[j]);
+                }
+            }
+            sem_unlock(sem_id, SEM_WIEZA_MUTEX);
+            
+            // w przypadku awarii przerywamy zwiedzanie dla reszty grupy
+            // musimy jednak zwolnic semafor dla tego ktory wlasnie "wszedl"
+            unregister_tower_exit(park, sem_id, t_pid);
+            sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+            
+            printf("[WIEŻA] Grupa ewakuowana. Uciekamy od wieży!\n");
+            return; // koniec atrakcji
+        }
+
+        // zwiedzanie
+        // normalnie robi to proces turysty, ale tutaj symulujemy czas zajetosci zasobu
+        usleep(300000 + (rand() % 300000)); 
+
+        // wyjscie
+        unregister_tower_exit(park, sem_id, t_pid);
+        sem_unlock(sem_id, SEM_WIEZA_LIMIT); // zwalniamy miejsce dla innych
+        
+        printf("[WIEŻA] Turysta %d zszedł z wieży.\n", t_pid);
+    }
+    
+    printf("[WIEŻA] Wszyscy chętni zwiedzili wieżę. Idziemy dalej.\n");
+}
+
 int main(int argc, char* argv[]) {
     // walidacja
     if (argc < 2) {
@@ -175,8 +329,11 @@ int main(int argc, char* argv[]) {
         // kopiujemy wiek turysty od razu po przebudzeniu
         // zanim nowi turysci nadpisza pamiec wspoldzielona
         int current_group_ages[M_GROUP_SIZE];
+        pid_t current_group_pids[M_GROUP_SIZE];
+
         for(int i=0; i<M_GROUP_SIZE; i++) {
             current_group_ages[i] = park->group_ages[i];
+            current_group_pids[i] = park->group_pids[i];
         }
 
         // przejecie grupy
@@ -200,13 +357,13 @@ int main(int argc, char* argv[]) {
             printf("[PRZEWODNIK %d] Trasa: K → A → B → C → K\n", id);
             // do zrobienia: implementacja trasy 1
             cross_bridge(id, 0, park, sem_id, current_group_ages);
-            // visit_tower(id);
+            visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
             // take_ferry(id);
         } else {
             printf("[PRZEWODNIK %d] Trasa: K → C → B → A → K\n", id);
             // do zrobienia: implementacja trasy 2
             // take_ferry(id);
-            // visit_tower(id);
+            visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
             cross_bridge(id, 1, park, sem_id, current_group_ages);
         }
         
