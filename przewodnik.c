@@ -168,34 +168,41 @@ typedef struct {
 void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ages[], pid_t pids[]) {
     printf("[WIEŻA] Przewodnik %d dociera pod wieżę widokową.\n", guide_id);
 
-    // filtracja: kto zostaje na dole
-    // potrzebujemy tablicy flag: 1 = wchodzi, 0 = zostaje
-    int can_enter[M_GROUP_SIZE];
-    for(int i=0; i<M_GROUP_SIZE; i++) can_enter[i] = 1;
+    // filtracja - kto zostaje na dole (dzieci < 5 lat + opiekunowie)
+    int can_enter[M_GROUP_SIZE];    // 1 = wchodzi, 0 = zostaje
+    int is_guardian_down[M_GROUP_SIZE]; // flagi pomocnicze kto zostal jako opiekun na dole
+    
+    for(int i=0; i<M_GROUP_SIZE; i++) { 
+        can_enter[i] = 1; 
+        is_guardian_down[i] = 0; 
+    }
     
     int rejected_count = 0;
 
-    // szukamy dzieci < 5 lat
+    // najpierw oznaczamy dzieci < 5 lat i dobieramy im opiekunow do pozostania
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         if (ages[i] < 5) {
             printf("[WIEŻA] Turysta %d (lat %d) jest za mały (<5 lat). Zostaje na dole.\n", pids[i], ages[i]);
             can_enter[i] = 0;
             rejected_count++;
             
-            // musimy znalezc mu opiekuna (osoba >= 15 lat) ktora tez zostanie
-            int guardian_found = 0;
-            // najpierw szukamy kogos kto jeszcze wchodzi (zeby go wykluczyc)
+            // wymog: opiekun tez nie moze wejsc
+            // szukamy doroslego (>=18) ktory jeszcze nie zostal odrzucony
+            int guardian_idx = -1;
             for (int j = 0; j < M_GROUP_SIZE; j++) {
-                if (i != j && can_enter[j] == 1 && ages[j] >= 15) {
-                    can_enter[j] = 0; // opiekun tez zostaje
-                    printf("[WIEŻA] Turysta %d (lat %d) zostaje jako opiekun dla dziecka.\n", pids[j], ages[j]);
-                    guardian_found = 1;
-                    rejected_count++;
+                if (i != j && can_enter[j] == 1 && ages[j] >= 18 && !is_guardian_down[j]) {
+                    guardian_idx = j;
                     break;
                 }
             }
-            if (!guardian_found) {
-                printf("[WIEŻA] UWAGA: Dziecko bez dedykowanego opiekuna! Zostaje z przewodnikiem.\n");
+            
+            if (guardian_idx != -1) {
+                can_enter[guardian_idx] = 0; // opiekun zostaje na dole
+                is_guardian_down[guardian_idx] = 1;
+                rejected_count++;
+                printf("[WIEŻA] Turysta %d (lat %d) zostaje na dole jako opiekun malucha.\n", pids[guardian_idx], ages[guardian_idx]);
+            } else {
+                printf("[WIEŻA] Dziecko (lat %d) zostaje pod opieka przewodnika (brak wolnych opiekunow).\n", ages[i]);
             }
         }
     }
@@ -205,78 +212,133 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
         return;
     }
 
-    // sortowanie vip
-    // tworzymy liste indeksow do wejscia
-    int entry_order[M_GROUP_SIZE];
+    // kolejkowanie (vip/starsi wchodza pierwsi)
+    int entry_queue[M_GROUP_SIZE];
     int count_to_enter = 0;
     
-    // najpierw dodajemy vip-ow (dla symulacji przyjmijmy vip jesli wiek dzieli sie przez 10 lub > 60)
-    // uproszczenie: uznajemy osoby starsze > 60 za priorytet
+    // najpierw starsi > 60 lat
     for (int i = 0; i < M_GROUP_SIZE; i++) {
-        if (can_enter[i] && ages[i] > 60) {
-            entry_order[count_to_enter++] = i;
-            printf("[WIEŻA] Turysta %d (lat %d) ma priorytet (Senior/VIP).\n", pids[i], ages[i]);
-        }
+        if (can_enter[i] && ages[i] > 60) entry_queue[count_to_enter++] = i;
     }
     // potem reszta
     for (int i = 0; i < M_GROUP_SIZE; i++) {
-        if (can_enter[i] && ages[i] <= 60) {
-            entry_order[count_to_enter++] = i;
-        }
+        if (can_enter[i] && ages[i] <= 60) entry_queue[count_to_enter++] = i;
     }
 
-    // proces wchodzenia na wieze
+    // tablica flag, kto juz wszedl (zeby nie wziac opiekuna dwa razy)
+    int processed_entry[M_GROUP_SIZE];
+    for(int i=0; i<M_GROUP_SIZE; i++) processed_entry[i] = 0;
+
+    // proces wchodzenia (z parowaniem < 15 lat)
     printf("[WIEŻA] Przewodnik czeka na dole. Turyści wchodzą...\n");
 
     for (int k = 0; k < count_to_enter; k++) {
-        int idx = entry_order[k];
+        int idx = entry_queue[k];
+
+        // jesli ta osoba juz weszla (np. jako opiekun kogos wczesniej), pomijamy
+        if (processed_entry[idx]) continue;
+
         pid_t t_pid = pids[idx];
         int t_age = ages[idx];
+        
+        int companion_idx = -1;
 
-        // czekamy na miejsce na wiezy (semafor licznikowy)
-        sem_lock(sem_id, SEM_WIEZA_LIMIT);
-
-        // rejestrujemy pid (sekcja krytyczna mutex)
-        register_tower_entry(park, sem_id, t_pid);
-        printf("[WIEŻA] Turysta %d (lat %d) wchodzi na górę. (Liczba osób: %d)\n", 
-               t_pid, t_age, park->tower_current_count);
-
-        // symulacja zagrozenia
-        if ((rand() % 100) < 2) {
-            printf("\n[WIEŻA] Awaria konstrukcji! Przewodnik zarządza ewakuację!\n");
-            
-            // wysylamy sygnal do wszystkich obecnie bedacych na wiezy
-            sem_lock(sem_id, SEM_WIEZA_MUTEX);
-            for(int j=0; j<N_PARK_CAPACITY; j++) {
-                if (park->tower_visitors[j] != 0) {
-                    kill(park->tower_visitors[j], SIGUSR1);
-                    printf("[WIEŻA] Przewodnik wysłał SIGUSR1 do %d\n", park->tower_visitors[j]);
+        // logika parowania (wymog: dzieci < 15 lat wchodza z doroslym)
+        if (t_age < 15) {
+            // przeszukujemy reszte kolejki w poszukiwaniu opiekuna
+            for (int m = k + 1; m < count_to_enter; m++) {
+                int possible_guardian_idx = entry_queue[m];
+                // szukamy kogos kto nie byl obsluzony i ma >= 18 lat
+                if (!processed_entry[possible_guardian_idx] && ages[possible_guardian_idx] >= 18) {
+                    companion_idx = possible_guardian_idx;
+                    break;
                 }
             }
-            sem_unlock(sem_id, SEM_WIEZA_MUTEX);
-            
-            // w przypadku awarii przerywamy zwiedzanie dla reszty grupy
-            // musimy jednak zwolnic semafor dla tego ktory wlasnie "wszedl"
-            unregister_tower_exit(park, sem_id, t_pid);
-            sem_unlock(sem_id, SEM_WIEZA_LIMIT);
-            
-            printf("[WIEŻA] Grupa ewakuowana. Uciekamy od wieży!\n");
-            return; // koniec atrakcji
         }
 
-        // zwiedzanie
-        // normalnie robi to proces turysty, ale tutaj symulujemy czas zajetosci zasobu
-        usleep(300000 + (rand() % 300000)); 
+        // wejscie na wieze
+        if (companion_idx != -1) {
+            // wchodzi para: ziecko + opiekun
+            // sprawdzamy dostepnosc 2 miejsc (2 x sem_lock)
+            sem_lock(sem_id, SEM_WIEZA_LIMIT);
+            sem_lock(sem_id, SEM_WIEZA_LIMIT);
+            
+            pid_t g_pid = pids[companion_idx];
+            int g_age = ages[companion_idx];
+            
+            printf("[WIEŻA] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d). (Liczba osób: %d)\n", 
+                   t_age, g_age, park->tower_current_count + 2); 
+            
+            register_tower_entry(park, sem_id, t_pid);
+            register_tower_entry(park, sem_id, g_pid);
+            
+            // symulacja awarii dla pary
+            if ((rand() % 100) < 2) { 
+                printf("\n[WIEŻA] Awaria konstrukcji! Ewakuacja! (SIGUSR1)\n");
+                sem_lock(sem_id, SEM_WIEZA_MUTEX);
+                for(int j=0; j<N_PARK_CAPACITY; j++) {
+                    if (park->tower_visitors[j] != 0) kill(park->tower_visitors[j], SIGUSR1);
+                }
+                sem_unlock(sem_id, SEM_WIEZA_MUTEX);
+                
+                // sprzatanie po parze
+                unregister_tower_exit(park, sem_id, t_pid);
+                unregister_tower_exit(park, sem_id, g_pid);
+                sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+                sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+                printf("[WIEŻA] Grupa ewakuowana.\n");
+                return; 
+            }
+            
+            usleep(300000 + (rand() % 300000)); 
+            
+            unregister_tower_exit(park, sem_id, t_pid);
+            unregister_tower_exit(park, sem_id, g_pid);
+            sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+            sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+            
+            processed_entry[companion_idx] = 1; // oznaczamy opiekuna jako obsluzonego
+            printf("[WIEŻA] Para (Dziecko %d + Opiekun %d) zeszła z wieży.\n", t_age, g_age);
 
-        // wyjscie
-        unregister_tower_exit(park, sem_id, t_pid);
-        sem_unlock(sem_id, SEM_WIEZA_LIMIT); // zwalniamy miejsce dla innych
+        } else {
+            // wchodzi pojedynczo (dorosly lub dziecko bez pary)
+            sem_lock(sem_id, SEM_WIEZA_LIMIT);
+            
+            register_tower_entry(park, sem_id, t_pid);
+            if (t_age < 15) {
+                printf("[WIEŻA] Dziecko (lat %d) wchodzi pod opieką obsługi wieży (brak opiekuna w grupie).\n", t_age);
+            } else {
+                printf("[WIEŻA] Turysta (lat %d) wchodzi na górę. (Liczba osób: %d)\n", t_age, park->tower_current_count);
+            }
+
+            // symulacja awarii dla pojedynczej osoby
+            if ((rand() % 100) < 2) {
+                printf("\n[WIEŻA] Awaria konstrukcji! Ewakuacja! (SIGUSR1)\n");
+                sem_lock(sem_id, SEM_WIEZA_MUTEX);
+                for(int j=0; j<N_PARK_CAPACITY; j++) {
+                    if (park->tower_visitors[j] != 0) kill(park->tower_visitors[j], SIGUSR1);
+                }
+                sem_unlock(sem_id, SEM_WIEZA_MUTEX);
+                
+                unregister_tower_exit(park, sem_id, t_pid);
+                sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+                printf("[WIEŻA] Grupa ewakuowana.\n");
+                return; 
+            }
+
+            usleep(300000 + (rand() % 300000)); 
+
+            unregister_tower_exit(park, sem_id, t_pid);
+            sem_unlock(sem_id, SEM_WIEZA_LIMIT);
+            printf("[WIEŻA] Turysta %d zszedł z wieży.\n", t_pid);
+        }
         
-        printf("[WIEŻA] Turysta %d zszedł z wieży.\n", t_pid);
+        processed_entry[idx] = 1;
     }
     
     printf("[WIEŻA] Wszyscy chętni zwiedzili wieżę. Idziemy dalej.\n");
 }
+
 
 // funkcja obslugi promu
 void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int sem_id, int ages[]) {
