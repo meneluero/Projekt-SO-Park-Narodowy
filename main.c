@@ -81,7 +81,7 @@ int main() {
     
 
     // tworzenie semaforow
-    sem_id = semget(SEM_KEY_ID, 9, IPC_CREAT | 0666);
+    sem_id = semget(SEM_KEY_ID, 10, IPC_CREAT | 0666);
     if (sem_id == -1) {
         perror("[MAIN] Błąd semget");
         exit(1);
@@ -126,6 +126,10 @@ int main() {
     // mutex dla danych promu
     arg.val = 1;
     semctl(sem_id, SEM_PROM_MUTEX, SETVAL, arg);
+
+    // mutex dla kolejki
+    arg.val = 1;
+    semctl(sem_id, SEM_QUEUE_MUTEX, SETVAL, arg);
     
     // -----------------------------------------------------------
     // tworzenie kolejki komunikatow (IPC - drugi mechanizm!)

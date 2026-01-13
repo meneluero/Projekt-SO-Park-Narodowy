@@ -96,20 +96,30 @@ int main(int argc, char* argv[]) {
     // na razie upraszczamy - vip tez w grupach (do zrobienia: solo zwiedzanie VIP)
     
     // zgloszenie sie do grupy
+    // blokujemy dostep do listy obecnosci
+    sem_lock(sem_id, SEM_QUEUE_MUTEX);
+
+    // sekcja krytyczna - tylko jeden turysta tu przebywa na raz
     park->group_ages[park->people_in_queue] = age;
-
     park->group_pids[park->people_in_queue] = getpid(); // zapisujemy pid
-
     park->people_in_queue++;
 
-    printf("[TURYSTA %d] Czekam na przewodnika. (Grupa: %d/%d)\n", id, park->people_in_queue, M_GROUP_SIZE);
+    int current_count = park->people_in_queue; // zapamietujemy lokalnie
+
+    // jesli to byl ostatni turysta resetujemy licznik dla nastepnej grupy
+    if (current_count == M_GROUP_SIZE) {
+        park->people_in_queue = 0;
+    }
+
+    // odblokowanie dostepu
+    sem_unlock(sem_id, SEM_QUEUE_MUTEX);
+
+    printf("[TURYSTA %d] Czekam na przewodnika. (Grupa: %d/%d)\n", id, current_count, M_GROUP_SIZE);
     
     // sprawdzenie czy jestesmy ostatni w grupie (komplet)
-    if (park->people_in_queue == M_GROUP_SIZE) {
+    if (current_count == M_GROUP_SIZE) {
         printf("[TURYSTA %d] Komplet! Budzę przewodnika!\n", id);
-        
-        park->people_in_queue = 0; // zerujemy licznik dla nastepnej grupy
-        sem_unlock(sem_id, 1);     // budzimy przewodnika (semafor 1)
+        sem_unlock(sem_id, 1); // budzimy przewodnika
     }
     
     // czekamy na znak od przewodnika (semafor 2)

@@ -31,6 +31,7 @@
 #define SEM_WIEZA_MUTEX 6 // mutex do ochrony tablicy danych
 #define SEM_PROM_LIMIT 7 // limit pojemnosci promu
 #define SEM_PROM_MUTEX 8 // mutex do ochrony danych promu
+#define SEM_QUEUE_MUTEX 9 
 
 // klucze ipc
 #define SHM_KEY_ID 1234
