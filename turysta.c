@@ -2,11 +2,19 @@
 #include <string.h>
 #include <signal.h>
 
+volatile sig_atomic_t emergency_flag = 0;
+
 // handler sygnalu ewakuacji
 void tower_evacuation_handler(int sig) {
     char *msg = "\n[TURYSTA] Ewakuacja! Zbiegam z wieży! (SIGUSR1)\n";
     write(STDOUT_FILENO, msg, strlen(msg));
     // sygnal przerwie sleep() wiec turystna "wybiegnie" naturalnie
+}
+
+void emergency_exit_handler(int sig) {
+    emergency_flag = 1; // ustawiamy flage
+    char *msg = "\n[TURYSTA] Alarm! Natychmiastowy powrót! (SIGUSR2)\n";
+    write(STDOUT_FILENO, msg, strlen(msg));
 }
 
 int main(int argc, char* argv[]) {
@@ -16,6 +24,12 @@ int main(int argc, char* argv[]) {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0; // nie uzywamy SA_RESTART zeby sleep() zostal przerwany
     sigaction(SIGUSR1, &sa, NULL);
+
+    struct sigaction sa_exit;
+    sa_exit.sa_handler = emergency_exit_handler;
+    sigemptyset(&sa_exit.sa_mask);
+    sa_exit.sa_flags = 0;
+    sigaction(SIGUSR2, &sa_exit, NULL);
 
     // argv[1] to bedzie numer naszego turysty przekazanego przez maina
     if (argc < 2) {
@@ -128,13 +142,28 @@ int main(int argc, char* argv[]) {
     // koniec czekania - wycieczka!
     printf("[TURYSTA %d] Zwiedzam z przewodnikiem!\n", id);
     
-    // -----------------------------------------------------------
-    // symulacja zwiedzania (przewodnik prowadzi po trasie)
-    // -----------------------------------------------------------
-    
-    // turysta nie decyduje sam o czasie zwiedzania
-    // czeka na semaforze nr 3 (SEM_KONIEC_WYCIECZKI) az przewodnik oglosci koniec
-    sem_lock(sem_id, SEM_KONIEC_WYCIECZKI);
+    // petla zwiedzania z okresowym sprawdzaniem flagi awaryjnej
+    while(!emergency_flag) {
+        // sprawdzamy co 100ms czy przewodnik nie wyslal alarmu
+        usleep(100000);
+        
+        // sprawdzamy czy wycieczka skonczyla sie normalnie
+        struct sembuf check;
+        check.sem_num = SEM_KONIEC_WYCIECZKI;
+        check.sem_op = -1;
+        check.sem_flg = IPC_NOWAIT; // nie blokuj
+        
+        if (semop(sem_id, &check, 1) == 0) {
+            printf("[TURYSTA %d] Wycieczka zakończona normalnie.\n", id);
+            break;
+        }
+        // wycieczka trwa dalej - czekamy
+    }
+
+    // czy byla ewakuacja
+    if (emergency_flag) {
+        printf("[TURYSTA %d] Ewakuacja! Pomijam resztę wycieczki!\n", id);
+    }
     
     // -----------------------------------------------------------
     // logika wyjscia z parku

@@ -469,6 +469,19 @@ void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int
     printf("[PROM] Cała grupa przeprawiona.\n");
 }
 
+void trigger_emergency_evacuation(pid_t group_pids[], int count, int guide_id) {
+    printf("\n[PRZEWODNIK %d] Sytuacja awaryjna! Ewakuacja!\n", guide_id);
+    
+    for(int i = 0; i < count; i++) {
+        if (group_pids[i] > 0) {
+            printf("[PRZEWODNIK %d] Wysyłam SIGUSR2 do turysty PID=%d\n", guide_id, group_pids[i]);
+            kill(group_pids[i], SIGUSR2);
+        }
+    }
+    
+    usleep(200000); // dajemy turystom czas na reakcje
+    printf("[PRZEWODNIK %d] Odprowadzam grupę bezpośrednio do kasy.\n", guide_id);
+}
 
 int main(int argc, char* argv[]) {
     // walidacja
@@ -538,6 +551,26 @@ int main(int argc, char* argv[]) {
         // male opoznienie zeby turysci sie "zgromadzili"
         usleep(200000); // 200ms
         
+        // kopiujemy pid zaraz po przebudzeniu
+        pid_t current_group_pids[M_GROUP_SIZE];
+        for(int i=0; i<M_GROUP_SIZE; i++) {
+            current_group_pids[i] = park->group_pids[i];
+        }
+
+        // symulacja sytuacji awaryjnej
+        if ((rand() % 100) < 90) {
+            trigger_emergency_evacuation(current_group_pids, M_GROUP_SIZE, id);
+
+            // raport
+            struct msg_buffer report;
+            report.msg_type = MSG_TYPE_REPORT;
+            report.tourist_id = id;
+            sprintf(report.info, "Przewodnik %d - ewakuacja (awaria)", id);
+            msgsnd(msg_id, &report, sizeof(report) - sizeof(long), 0);
+            
+            sleep(1);
+            continue; // pomijamy trase, bierzemy kolejna grupe
+        }
         // losowanie trasy (1 lub 2)
         int route = (rand() % 2) + 1;
         
@@ -548,10 +581,6 @@ int main(int argc, char* argv[]) {
             // do zrobienia: implementacja trasy 1
             cross_bridge(id, 0, park, sem_id, current_group_ages);
 
-            // pobieramy pid dla wiezy
-            pid_t current_group_pids[M_GROUP_SIZE];
-            for(int i=0; i<M_GROUP_SIZE; i++) current_group_pids[i] = park->group_pids[i];
-
             visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
 
             take_ferry(id, 0, park, sem_id, current_group_ages);
@@ -559,10 +588,6 @@ int main(int argc, char* argv[]) {
             printf("[PRZEWODNIK %d] Trasa: K → C → B → A → K\n", id);
             // do zrobienia: implementacja trasy 2
             take_ferry(id, 1, park, sem_id, current_group_ages);
-
-            // pobieramy pid dla wiezy
-            pid_t current_group_pids[M_GROUP_SIZE];
-            for(int i=0; i<M_GROUP_SIZE; i++) current_group_pids[i] = park->group_pids[i];
 
             visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
 

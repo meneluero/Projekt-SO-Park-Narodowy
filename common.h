@@ -63,6 +63,7 @@ struct ParkSharedMemory {
     int group_ages[M_GROUP_SIZE]; // turysci zapisuja tu swoj wiek przy wejsciu do kolejki
     pid_t group_pids[M_GROUP_SIZE]; // pid turystow w grupie
     
+    
     // atrakcje - stany
     int bridge_current_count; // ile osob na moscie
     int bridge_direction; // kierunek ruchu (0=K->A, 1=A->K)
