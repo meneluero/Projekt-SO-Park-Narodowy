@@ -115,6 +115,7 @@ int main(int argc, char* argv[]) {
 
     // sekcja krytyczna - tylko jeden turysta tu przebywa na raz
     park->group_ages[park->people_in_queue] = age;
+    park->group_vips[park->people_in_queue] = is_vip; // zapisujemy status vip
     park->group_pids[park->people_in_queue] = getpid(); // zapisujemy pid
     park->people_in_queue++;
 

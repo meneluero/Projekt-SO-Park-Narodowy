@@ -165,7 +165,7 @@ typedef struct {
 } TouristInfo;
 
 // kompletna funkcja wiezy
-void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ages[], pid_t pids[]) {
+void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ages[], pid_t pids[], int vips[]) {
     printf("[WIEŻA] Przewodnik %d dociera pod wieżę widokową.\n", guide_id);
 
     // filtracja - kto zostaje na dole (dzieci < 5 lat + opiekunowie)
@@ -216,13 +216,17 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
     int entry_queue[M_GROUP_SIZE];
     int count_to_enter = 0;
     
-    // najpierw starsi > 60 lat
+    // najpierw vipy
     for (int i = 0; i < M_GROUP_SIZE; i++) {
-        if (can_enter[i] && ages[i] > 60) entry_queue[count_to_enter++] = i;
+        if (can_enter[i] && vips[i]) entry_queue[count_to_enter++] = i;
+    }
+    // potem starsi > 60 lat
+    for (int i = 0; i < M_GROUP_SIZE; i++) {
+        if (can_enter[i] && !vips[i] && ages[i] > 60) entry_queue[count_to_enter++] = i;
     }
     // potem reszta
     for (int i = 0; i < M_GROUP_SIZE; i++) {
-        if (can_enter[i] && ages[i] <= 60) entry_queue[count_to_enter++] = i;
+        if (can_enter[i] && !vips[i] && ages[i] <= 60) entry_queue[count_to_enter++] = i;
     }
 
     // tablica flag, kto juz wszedl (zeby nie wziac opiekuna dwa razy)
@@ -341,7 +345,7 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
 
 
 // funkcja obslugi promu
-void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int sem_id, int ages[]) {
+void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int sem_id, int ages[], int vips[]) {
     char* bank_name = (start_bank == 0) ? "Brzeg C (Wyspa)" : "Brzeg A (Ląd)"; 
     printf("[PROM] Przewodnik %d dociera do przeprawy promowej (%s).\n", guide_id, bank_name);
 
@@ -374,13 +378,17 @@ void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int
     int priority_indices[M_GROUP_SIZE];
     int p_count = 0;
     
-    // najpierw vip/seniorzy
+    // najpierw vip
     for(int i=0; i<M_GROUP_SIZE; i++) {
-        if(ages[i] > 60) priority_indices[p_count++] = i;
+        if(vips[i]) priority_indices[p_count++] = i;
     }
-    // potem reszta
+    // seniorzy > 60 
     for(int i=0; i<M_GROUP_SIZE; i++) {
-        if(ages[i] <= 60) priority_indices[p_count++] = i;
+        if(!vips[i] && ages[i] > 60) priority_indices[p_count++] = i;
+    }
+    // reszta
+    for(int i=0; i<M_GROUP_SIZE; i++) {
+        if(!vips[i] && ages[i] <= 60) priority_indices[p_count++] = i;
     }
 
     // petla kursowania promu
@@ -534,9 +542,11 @@ int main(int argc, char* argv[]) {
         // kopiujemy wiek turysty od razu po przebudzeniu
         // zanim nowi turysci nadpisza pamiec wspoldzielona
         int current_group_ages[M_GROUP_SIZE];
+        int current_group_vips[M_GROUP_SIZE];
 
         for(int i=0; i<M_GROUP_SIZE; i++) {
             current_group_ages[i] = park->group_ages[i];
+            current_group_vips[i] = park->group_vips[i];
         }
 
         // przejecie grupy
@@ -558,7 +568,7 @@ int main(int argc, char* argv[]) {
         }
 
         // symulacja sytuacji awaryjnej
-        if ((rand() % 100) < 90) {
+        if ((rand() % 100) < 2) {
             trigger_emergency_evacuation(current_group_pids, M_GROUP_SIZE, id);
 
             // raport
@@ -581,15 +591,15 @@ int main(int argc, char* argv[]) {
             // do zrobienia: implementacja trasy 1
             cross_bridge(id, 0, park, sem_id, current_group_ages);
 
-            visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
-
-            take_ferry(id, 0, park, sem_id, current_group_ages);
+            visit_tower(id, park, sem_id, current_group_ages, current_group_pids, current_group_vips);
+            
+            take_ferry(id, 0, park, sem_id, current_group_ages, current_group_vips);
         } else {
             printf("[PRZEWODNIK %d] Trasa: K → C → B → A → K\n", id);
             // do zrobienia: implementacja trasy 2
-            take_ferry(id, 1, park, sem_id, current_group_ages);
+            take_ferry(id, 1, park, sem_id, current_group_ages, current_group_vips);
 
-            visit_tower(id, park, sem_id, current_group_ages, current_group_pids);
+            visit_tower(id, park, sem_id, current_group_ages, current_group_pids, current_group_vips);
 
             cross_bridge(id, 1, park, sem_id, current_group_ages);
         }
