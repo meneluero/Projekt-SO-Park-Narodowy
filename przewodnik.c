@@ -65,11 +65,21 @@ void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, in
         int t1_idx = -1;
         int t2_idx = -1;
 
-        // szukamy czy ktos jeszcze nie przeszedl
+        // najpierw szukamy dzieci < 15 lat
         for(int i=0; i<M_GROUP_SIZE; i++) {
-            if (!processed[i]) {
+            if (!processed[i] && local_ages[i] < 15) {
                 t1_idx = i;
                 break;
+            }
+        }
+
+        // jesli nie ma juz dzieci bierzemy dowolnego doroslego
+        if (t1_idx == -1) {
+            for(int i=0; i<M_GROUP_SIZE; i++) {
+                if (!processed[i]) {
+                    t1_idx = i;
+                    break;
+                }
             }
         }
 
@@ -247,14 +257,24 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
         
         int companion_idx = -1;
 
-        // logika parowania (wymog: dzieci < 15 lat wchodza z doroslym)
+        // logika dwukierunkowa
         if (t_age < 15) {
-            // przeszukujemy reszte kolejki w poszukiwaniu opiekuna
-            for (int m = k + 1; m < count_to_enter; m++) {
-                int possible_guardian_idx = entry_queue[m];
-                // szukamy kogos kto nie byl obsluzony i ma >= 18 lat
-                if (!processed_entry[possible_guardian_idx] && ages[possible_guardian_idx] >= 18) {
-                    companion_idx = possible_guardian_idx;
+            // dziecko szuka opiekuna
+            for (int m = 0; m < count_to_enter; m++) {
+                int possible = entry_queue[m];
+                // szukamy kogos kto nie wszedl, nie jest mna i jest dorosly
+                if (possible != idx && !processed_entry[possible] && ages[possible] >= 18) {
+                    companion_idx = possible;
+                    break;
+                }
+            }
+        } else if (t_age >= 18) {
+            // dorosly sprawdza czy nie musi wziac dziecka
+            for (int m = 0; m < count_to_enter; m++) {
+                int possible = entry_queue[m];
+                // szukamy kogos kto nie wszedl, nie jest mna i jest dzieckiem
+                if (possible != idx && !processed_entry[possible] && ages[possible] < 15) {
+                    companion_idx = possible;
                     break;
                 }
             }
@@ -398,18 +418,39 @@ void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int
         
         printf("[PROM] Rozpoczynam załadunek (Wolnych miejsc: %d)...\n", capacity_left);
 
+        // sekcja krytyczna zaladunku
+        sem_lock(sem_id, SEM_PROM_MUTEX);
+        
+        // czy prom nadal jest po naszej stronie
+        if (park->ferry_position != start_bank) {
+            printf("[PROM] Błąd! Prom zmienił położenie podczas załadunku! Czekam na powrót...\n");
+            park->ferry_position = start_bank; // wymuszamy powrot
+            usleep(100000);
+        }
+
         // algorytm zaladunku z listy priorytetowej
         while (capacity_left > 0 && current_batch < remaining) {
              int t1_idx = -1;
              int t2_idx = -1;
 
-             // znajdz pierwszego nieobsluzonego z listy priorytetow
+             // szukamy dziecka w liscie priorytetow
              for(int k=0; k<M_GROUP_SIZE; k++) {
                  int real_idx = priority_indices[k];
-                 if(!processed[real_idx]) { 
+                 if(!processed[real_idx] && ages[real_idx] < 15) { 
                      t1_idx = real_idx; 
                      break; 
                  } 
+             }
+             
+             // jesli brak dzieci bierzemy pierwszego doroslego z brzegu
+             if (t1_idx == -1) {
+                 for(int k=0; k<M_GROUP_SIZE; k++) {
+                     int real_idx = priority_indices[k];
+                     if(!processed[real_idx]) { 
+                         t1_idx = real_idx; 
+                         break; 
+                     } 
+                 }
              }
              
              if (t1_idx == -1) break; // brak chetnych
@@ -447,6 +488,10 @@ void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int
                  remaining--; capacity_left--; current_batch++;
              }
         }
+
+        // koniec sekcji krytycznej zaladunku
+        park->ferry_current_count = 1 + current_batch;
+        sem_unlock(sem_id, SEM_PROM_MUTEX);
 
         if (current_batch == 0 && remaining > 0) {
             // zabezpieczenie przed petla nieskonczona (np. same dzieci i brak miejsc)
