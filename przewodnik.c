@@ -97,7 +97,10 @@ void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, in
             
             if (t2_idx != -1) {
                 // wejscie we dwojke (dziecko + opiekun)
-                printf("[MOST] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d)\n", local_ages[t1_idx], local_ages[t2_idx]);
+                int print_c = (local_ages[t1_idx] < 15) ? local_ages[t1_idx] : local_ages[t2_idx];
+                int print_g = (local_ages[t1_idx] >= 15) ? local_ages[t1_idx] : local_ages[t2_idx];
+                
+                printf("[MOST] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d)\n", print_c, print_g);
                 
                 // musimy zajac dwa miejsca na moscie
                 enter_bridge(guide_id, direction, park, sem_id); // dla dziecka
@@ -289,9 +292,11 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
             
             pid_t g_pid = pids[companion_idx];
             int g_age = ages[companion_idx];
+
+            int pc = (t_age < 15) ? t_age : g_age;
+            int pg = (t_age >= 15) ? t_age : g_age;
             
-            printf("[WIEŻA] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d). (Liczba osób: %d)\n", 
-                   t_age, g_age, park->tower_current_count + 2); 
+            printf("[WIEŻA] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d). (Liczba osób: %d)\n", pc, pg, park->tower_current_count + 2);
             
             register_tower_entry(park, sem_id, t_pid);
             register_tower_entry(park, sem_id, g_pid);
@@ -467,9 +472,12 @@ void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int
                  
                  // jesli mamy opiekuna i miejsce na 2 osoby
                  if (t2_idx != -1 && capacity_left >= 2) {
-                     printf("[PROM] Wchodzą: Dziecko (%d) + Opiekun (%d)\n", ages[t1_idx], ages[t2_idx]);
-                     processed[t1_idx] = 1; processed[t2_idx] = 1;
-                     remaining -= 2; capacity_left -= 2; current_batch += 2;
+                    int pc = (ages[t1_idx] < 15) ? ages[t1_idx] : ages[t2_idx];
+                    int pg = (ages[t1_idx] >= 15) ? ages[t1_idx] : ages[t2_idx];
+
+                    printf("[PROM] Wchodzą: Dziecko (%d) + Opiekun (%d)\n", pc, pg);
+                    processed[t1_idx] = 1; processed[t2_idx] = 1;
+                    remaining -= 2; capacity_left -= 2; current_batch += 2;
                  } 
                  // jesli brak opiekuna lub miejsca ale jest miejsce na 1 osobe -> bierze przewodnik
                  else if (t2_idx == -1 && capacity_left >= 1) {
