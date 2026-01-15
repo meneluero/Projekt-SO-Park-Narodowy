@@ -63,6 +63,7 @@ struct ParkSharedMemory {
     int group_ages[M_GROUP_SIZE]; // turysci zapisuja tu swoj wiek przy wejsciu do kolejki
     int group_vips[M_GROUP_SIZE]; // status vip
     pid_t group_pids[M_GROUP_SIZE]; // pid turystow w grupie
+    int group_ids[M_GROUP_SIZE]; // logiczne id turysty
     
     
     // atrakcje - stany

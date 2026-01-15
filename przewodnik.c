@@ -39,7 +39,7 @@ void exit_bridge(struct ParkSharedMemory *park, int sem_id) {
 }
 
 // glowna funkcja logiki mostu
-void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id, int ages[]) {
+void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id, int ages[], int ids[]) {
     char* dir_name = (direction == 0) ? "K->A" : "A->K";
     printf("[MOST] Przewodnik %d podchodzi do mostu (%s). Grupa czeka.\n", guide_id, dir_name);
 
@@ -97,10 +97,12 @@ void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, in
             
             if (t2_idx != -1) {
                 // wejscie we dwojke (dziecko + opiekun)
-                int print_c = (local_ages[t1_idx] < 15) ? local_ages[t1_idx] : local_ages[t2_idx];
-                int print_g = (local_ages[t1_idx] >= 15) ? local_ages[t1_idx] : local_ages[t2_idx];
+                int id_c = (local_ages[t1_idx] < 15) ? ids[t1_idx] : ids[t2_idx];
+                int id_g = (local_ages[t1_idx] >= 15) ? ids[t1_idx] : ids[t2_idx];
+                int age_c = (local_ages[t1_idx] < 15) ? local_ages[t1_idx] : local_ages[t2_idx];
+                int age_g = (local_ages[t1_idx] >= 15) ? local_ages[t1_idx] : local_ages[t2_idx];
                 
-                printf("[MOST] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d)\n", print_c, print_g);
+                printf("[MOST] Wchodzą: Dziecko (Turysta %d (lat %d)) + Opiekun (Turysta %d (lat %d))\n", id_c, age_c, id_g, age_g);
                 
                 // musimy zajac dwa miejsca na moscie
                 enter_bridge(guide_id, direction, park, sem_id); // dla dziecka
@@ -117,7 +119,7 @@ void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, in
             } else {
                 // brak opiekuna w grupie (przewodnik bierze dziecko - symulacja pojedynczego wejscia)
                 // wymaganie mowi "pod opieka osoby doroslej" ale jesli brak nie mozemy zablokowac programu
-                printf("[MOST] Dziecko (lat %d) idzie pod opieką przewodnika (brak wolnych opiekunów).\n", local_ages[t1_idx]);
+                printf("[MOST] Dziecko (Turysta %d (lat %d)) idzie pod opieką przewodnika.\n", ids[t1_idx], local_ages[t1_idx]);
                 enter_bridge(guide_id, direction, park, sem_id);
                 usleep(400000);
                 exit_bridge(park, sem_id);
@@ -126,7 +128,7 @@ void cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, in
             }
         } else {
             // dorosly idzie sam
-            printf("[MOST] Wchodzi turysta (lat %d)\n", local_ages[t1_idx]);
+            printf("[MOST] Wchodzi turysta %d (lat %d)\n", ids[t1_idx], local_ages[t1_idx]);
             enter_bridge(guide_id, direction, park, sem_id);
             usleep(200000 + (rand() % 200000));
             exit_bridge(park, sem_id);
@@ -178,11 +180,11 @@ typedef struct {
 } TouristInfo;
 
 // kompletna funkcja wiezy
-void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ages[], pid_t pids[], int vips[]) {
+void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ages[], pid_t pids[], int vips[], int ids[]) {
     printf("[WIEŻA] Przewodnik %d dociera pod wieżę widokową.\n", guide_id);
 
     // filtracja - kto zostaje na dole (dzieci < 5 lat + opiekunowie)
-    int can_enter[M_GROUP_SIZE];    // 1 = wchodzi, 0 = zostaje
+    int can_enter[M_GROUP_SIZE]; // 1 = wchodzi, 0 = zostaje
     int is_guardian_down[M_GROUP_SIZE]; // flagi pomocnicze kto zostal jako opiekun na dole
     
     for(int i=0; i<M_GROUP_SIZE; i++) { 
@@ -195,7 +197,7 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
     // najpierw oznaczamy dzieci < 5 lat i dobieramy im opiekunow do pozostania
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         if (ages[i] < 5) {
-            printf("[WIEŻA] Turysta %d (lat %d) jest za mały (<5 lat). Zostaje na dole.\n", pids[i], ages[i]);
+            printf("[WIEŻA] Turysta %d (lat %d) jest za mały (<5 lat). Zostaje na dole.\n", ids[i], ages[i]);
             can_enter[i] = 0;
             rejected_count++;
             
@@ -213,9 +215,9 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
                 can_enter[guardian_idx] = 0; // opiekun zostaje na dole
                 is_guardian_down[guardian_idx] = 1;
                 rejected_count++;
-                printf("[WIEŻA] Turysta %d (lat %d) zostaje na dole jako opiekun malucha.\n", pids[guardian_idx], ages[guardian_idx]);
+                printf("[WIEŻA] Turysta %d (lat %d) zostaje na dole jako opiekun malucha.\n", ids[guardian_idx], ages[guardian_idx]);
             } else {
-                printf("[WIEŻA] Dziecko (lat %d) zostaje pod opieka przewodnika (brak wolnych opiekunow).\n", ages[i]);
+                printf("[WIEŻA] Dziecko %d (lat %d) zostaje pod opieka przewodnika (brak wolnych opiekunow).\n", ids[i], ages[i]);
             }
         }
     }
@@ -257,6 +259,7 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
 
         pid_t t_pid = pids[idx];
         int t_age = ages[idx];
+        int t_id = ids[idx];
         
         int companion_idx = -1;
 
@@ -285,18 +288,21 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
 
         // wejscie na wieze
         if (companion_idx != -1) {
-            // wchodzi para: ziecko + opiekun
+            // wchodzi para: dziecko + opiekun
             // sprawdzamy dostepnosc 2 miejsc (2 x sem_lock)
             sem_lock(sem_id, SEM_WIEZA_LIMIT);
             sem_lock(sem_id, SEM_WIEZA_LIMIT);
             
             pid_t g_pid = pids[companion_idx];
             int g_age = ages[companion_idx];
+            int g_id = ids[companion_idx];
 
-            int pc = (t_age < 15) ? t_age : g_age;
-            int pg = (t_age >= 15) ? t_age : g_age;
+            int id_c = (t_age < 15) ? t_id : g_id;
+            int age_c = (t_age < 15) ? t_age : g_age;
+            int id_g = (t_age >= 15) ? t_id : g_id;
+            int age_g = (t_age >= 15) ? t_age : g_age;
             
-            printf("[WIEŻA] Wchodzą: Dziecko (lat %d) + Opiekun (lat %d). (Liczba osób: %d)\n", pc, pg, park->tower_current_count + 2);
+            printf("[WIEŻA] Wchodzą: Dziecko %d (lat %d) + Opiekun %d (lat %d). (Liczba osób: %d)\n", id_c, age_c, id_g, age_g, park->tower_current_count + 2);
             
             register_tower_entry(park, sem_id, t_pid);
             register_tower_entry(park, sem_id, g_pid);
@@ -327,7 +333,7 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
             sem_unlock(sem_id, SEM_WIEZA_LIMIT);
             
             processed_entry[companion_idx] = 1; // oznaczamy opiekuna jako obsluzonego
-            printf("[WIEŻA] Para (Dziecko %d + Opiekun %d) zeszła z wieży.\n", t_age, g_age);
+            printf("[WIEŻA] Para (Dziecko (Turysta %d) + Opiekun (Turysta %d)) zeszła z wieży.\n", id_c, id_g);
 
         } else {
             // wchodzi pojedynczo (dorosly lub dziecko bez pary)
@@ -335,9 +341,9 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
             
             register_tower_entry(park, sem_id, t_pid);
             if (t_age < 15) {
-                printf("[WIEŻA] Dziecko (lat %d) wchodzi pod opieką obsługi wieży (brak opiekuna w grupie).\n", t_age);
+                printf("[WIEŻA] Dziecko (Turysta %d (lat %d)) wchodzi pod opieką obsługi wieży (brak opiekuna w grupie).\n", t_id, t_age);
             } else {
-                printf("[WIEŻA] Turysta (lat %d) wchodzi na górę. (Liczba osób: %d)\n", t_age, park->tower_current_count);
+                printf("[WIEŻA] Turysta %d (lat %d) wchodzi na górę. (Liczba osób: %d)\n", t_id, t_age, park->tower_current_count);
             }
 
             // symulacja awarii dla pojedynczej osoby
@@ -359,7 +365,7 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
 
             unregister_tower_exit(park, sem_id, t_pid);
             sem_unlock(sem_id, SEM_WIEZA_LIMIT);
-            printf("[WIEŻA] Turysta %d zszedł z wieży.\n", t_pid);
+            printf("[WIEŻA] Turysta %d zszedł z wieży.\n", t_id);
         }
         
         processed_entry[idx] = 1;
@@ -370,7 +376,7 @@ void visit_tower(int guide_id, struct ParkSharedMemory *park, int sem_id, int ag
 
 
 // funkcja obslugi promu
-void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int sem_id, int ages[], int vips[]) {
+void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int sem_id, int ages[], int vips[], int ids[]) {
     char* bank_name = (start_bank == 0) ? "Brzeg C (Wyspa)" : "Brzeg A (Ląd)"; 
     printf("[PROM] Przewodnik %d dociera do przeprawy promowej (%s).\n", guide_id, bank_name);
 
@@ -472,26 +478,28 @@ void take_ferry(int guide_id, int start_bank, struct ParkSharedMemory *park, int
                  
                  // jesli mamy opiekuna i miejsce na 2 osoby
                  if (t2_idx != -1 && capacity_left >= 2) {
-                    int pc = (ages[t1_idx] < 15) ? ages[t1_idx] : ages[t2_idx];
-                    int pg = (ages[t1_idx] >= 15) ? ages[t1_idx] : ages[t2_idx];
+                    int id_c = (ages[t1_idx] < 15) ? ids[t1_idx] : ids[t2_idx];
+                    int id_g = (ages[t1_idx] >= 15) ? ids[t1_idx] : ids[t2_idx];
+                    int age_c = (ages[t1_idx] < 15) ? ages[t1_idx] : ages[t2_idx];
+                    int age_g = (ages[t1_idx] >= 15) ? ages[t1_idx] : ages[t2_idx];
 
-                    printf("[PROM] Wchodzą: Dziecko (%d) + Opiekun (%d)\n", pc, pg);
+                    printf("[PROM] Wchodzą: Dziecko (Turysta %d (lat %d)) + Opiekun (Turysta %d (lat %d))\n", id_c, age_c, id_g, age_g);
                     processed[t1_idx] = 1; processed[t2_idx] = 1;
                     remaining -= 2; capacity_left -= 2; current_batch += 2;
                  } 
                  // jesli brak opiekuna lub miejsca ale jest miejsce na 1 osobe -> bierze przewodnik
                  else if (t2_idx == -1 && capacity_left >= 1) {
-                     printf("[PROM] Dziecko (%d) pod opieką przewodnika.\n", ages[t1_idx]);
-                     processed[t1_idx] = 1;
-                     remaining -= 1; capacity_left -= 1; current_batch += 1;
+                    printf("[PROM] Dziecko (Turysta %d (lat %d)) pod opieką przewodnika.\n", ids[t1_idx], ages[t1_idx]);
+                    processed[t1_idx] = 1;
+                    remaining -= 1; capacity_left -= 1; current_batch += 1;
                  } else {
-                     // dziecko z opiekunem nie zmiesci sie w tej turze szukamy doroslego singla
-                     // upraszczajac: przerywamy ladowanie tej tury
-                     break; 
+                    // dziecko z opiekunem nie zmiesci sie w tej turze szukamy doroslego singla
+                    // upraszczajac: przerywamy ladowanie tej tury
+                    break; 
                  }
              } else {
                  // dorosly
-                 printf("[PROM] Wchodzi turysta (%d)\n", ages[t1_idx]);
+                 printf("[PROM] Wchodzi turysta %d (lat %d)\n", ids[t1_idx], ages[t1_idx]);
                  processed[t1_idx] = 1;
                  remaining--; capacity_left--; current_batch++;
              }
@@ -567,7 +575,7 @@ int main(int argc, char* argv[]) {
     }
     
     // pobranie id semaforow
-    int sem_id = semget(SEM_KEY_ID, 9, 0666);
+    int sem_id = semget(SEM_KEY_ID, 10, 0666);
     if (sem_id == -1) {
         perror("[PRZEWODNIK] Błąd semget");
         exit(1);
@@ -616,8 +624,10 @@ int main(int argc, char* argv[]) {
         
         // kopiujemy pid zaraz po przebudzeniu
         pid_t current_group_pids[M_GROUP_SIZE];
+        int current_group_ids[M_GROUP_SIZE];
         for(int i=0; i<M_GROUP_SIZE; i++) {
             current_group_pids[i] = park->group_pids[i];
+            current_group_ids[i] = park->group_ids[i];
         }
 
         // symulacja sytuacji awaryjnej
@@ -641,20 +651,20 @@ int main(int argc, char* argv[]) {
         
         if (route == 1) {
             printf("[PRZEWODNIK %d] Trasa: K → A → B → C → K\n", id);
-            // do zrobienia: implementacja trasy 1
-            cross_bridge(id, 0, park, sem_id, current_group_ages);
 
-            visit_tower(id, park, sem_id, current_group_ages, current_group_pids, current_group_vips);
+            cross_bridge(id, 0, park, sem_id, current_group_ages, current_group_ids);
+
+            visit_tower(id, park, sem_id, current_group_ages, current_group_pids, current_group_vips, current_group_ids);
             
-            take_ferry(id, 0, park, sem_id, current_group_ages, current_group_vips);
+            take_ferry(id, 0, park, sem_id, current_group_ages, current_group_vips, current_group_ids);
         } else {
             printf("[PRZEWODNIK %d] Trasa: K → C → B → A → K\n", id);
-            // do zrobienia: implementacja trasy 2
-            take_ferry(id, 1, park, sem_id, current_group_ages, current_group_vips);
 
-            visit_tower(id, park, sem_id, current_group_ages, current_group_pids, current_group_vips);
+            take_ferry(id, 1, park, sem_id, current_group_ages, current_group_vips, current_group_ids);
 
-            cross_bridge(id, 1, park, sem_id, current_group_ages);
+            visit_tower(id, park, sem_id, current_group_ages, current_group_pids, current_group_vips, current_group_ids);
+
+            cross_bridge(id, 1, park, sem_id, current_group_ages, current_group_ids);
         }
         
         // symulacja wycieczki

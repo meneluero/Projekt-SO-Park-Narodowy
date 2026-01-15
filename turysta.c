@@ -117,6 +117,7 @@ int main(int argc, char* argv[]) {
     park->group_ages[park->people_in_queue] = age;
     park->group_vips[park->people_in_queue] = is_vip; // zapisujemy status vip
     park->group_pids[park->people_in_queue] = getpid(); // zapisujemy pid
+    park->group_ids[park->people_in_queue] = id; 
     park->people_in_queue++;
 
     int current_count = park->people_in_queue; // zapamietujemy lokalnie
