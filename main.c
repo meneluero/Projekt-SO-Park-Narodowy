@@ -2,6 +2,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 // zmienne globalne
 int shm_id = -1;
@@ -10,41 +11,42 @@ int msg_id = -1;
 int cleanup_done = 0; // flaga aby cleanup wykonal sie tylko raz
 
 void cleanup() {
-    if (cleanup_done) return; // juz bylo sprzatanie
+    if (cleanup_done) return;
     cleanup_done = 1;
-    
-    printf("\n[MAIN] Sprzątanie zasobów systemowych...\n");
 
-    kill(0, SIGTERM); // zabijamy wszystkie procesy potomne
+    printf("\n[MAIN] Rozpoczęto sprzątanie zasobów...\n");
+
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGTERM, &sa, NULL);
+
+    // zabicie wszystkich procesow w grupie
+    kill(0, SIGTERM);
+
+    // czekanie na zakonczenie dzieci
+    while (waitpid(-1, NULL, 0) > 0 || errno == EINTR);
     
-    // usuniecie kolejki komunikatow
+    printf("[MAIN] Procesy potomne posprzątane.\n");
+
+    // usuwanie ipc z obsluga bledow
     if (msg_id != -1) {
-        if (msgctl(msg_id, IPC_RMID, NULL) == -1) {
-            perror("[MAIN] Błąd usuwania kolejki komunikatów");
-        } else {
-            printf("[MAIN] Kolejka komunikatów usunięta.\n");
-        }
+        if (msgctl(msg_id, IPC_RMID, NULL) == -1) perror("[MAIN] Błąd msgctl");
+        else printf("[MAIN] Kolejka usunięta.\n");
     }
-    
-    // usuniecie pamieci dzielonej
+
     if (shm_id != -1) {
-        if (shmctl(shm_id, IPC_RMID, NULL) == -1) {
-            perror("[MAIN] Błąd usuwania pamięci dzielonej");
-        } else {
-            printf("[MAIN] Pamięć dzielona usunięta.\n");
-        }
+        if (shmctl(shm_id, IPC_RMID, NULL) == -1) perror("[MAIN] Błąd shmctl");
+        else printf("[MAIN] Pamięć dzielona usunięta.\n");
     }
-    
-    // usuniecie semaforow
+
     if (sem_id != -1) {
-        if (semctl(sem_id, 0, IPC_RMID) == -1) {
-            perror("[MAIN] Błąd usuwania semaforów");
-        } else {
-            printf("[MAIN] Semafory usunięte.\n");
-        }
+        if (semctl(sem_id, 0, IPC_RMID) == -1) perror("[MAIN] Błąd semctl");
+        else printf("[MAIN] Semafory usunięte.\n");
     }
-    
-    printf("[MAIN] Sprzątanie zakończone.\n");
+
+    printf("[MAIN] System czysty. Zamykanie.\n");
 }
 
 void handle_sigint(int sig) {
