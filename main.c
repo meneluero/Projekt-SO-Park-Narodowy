@@ -87,7 +87,7 @@ int main() {
     }
 
     // proba pobrania i usuniecia starych semaforow
-    int old_sem_id = semget(SEM_KEY_ID, 10, 0666); 
+    int old_sem_id = semget(SEM_KEY_ID, 11, 0666); 
     if (old_sem_id != -1) {
         semctl(old_sem_id, 0, IPC_RMID);
         printf("[MAIN-INIT] Wykryto i usunięto stare semafory.\n");
@@ -125,7 +125,7 @@ int main() {
     
 
     // tworzenie semaforow
-    sem_id = semget(SEM_KEY_ID, 10, IPC_CREAT | 0666);
+    sem_id = semget(SEM_KEY_ID, 11, IPC_CREAT | 0666);
     if (sem_id == -1) {
         perror("[MAIN] Błąd semget");
         exit(1);
@@ -174,6 +174,10 @@ int main() {
     // mutex dla kolejki
     arg.val = 1;
     semctl(sem_id, SEM_QUEUE_MUTEX, SETVAL, arg);
+
+    // mutex dla statystyk
+    arg.val = 1;
+    semctl(sem_id, SEM_STATS_MUTEX, SETVAL, arg);
     
     // -----------------------------------------------------------
     // tworzenie kolejki komunikatow (IPC - drugi mechanizm!)

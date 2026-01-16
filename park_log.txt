@@ -939,3 +939,59 @@
 [KASJER 1] Raport: Przewodnik 4 zakończył wycieczkę (trasa 1, 5 osób)
 [KASJER 1] Turysta 20 - wyjście (czas w parku: 19:36:13)
 [KASJER 1] Turysta 1 - wyjście (czas w parku: 19:36:13)
+[KASJER 1] Rozpoczęcie pracy
+[KASJER 1] Turysta 1 (wiek: 34) - bilet normalny
+[KASJER 1] Turysta 2 (wiek: 48) - bilet normalny
+[KASJER 1] Turysta 3 (wiek: 49) - bilet normalny
+[KASJER 1] Turysta 4 (wiek: 45) - bilet normalny
+[KASJER 1] Turysta 5 (wiek: 45) - bilet normalny
+[KASJER 1] Turysta 6 (wiek: 64) - bilet normalny
+[KASJER 1] Turysta 7 (wiek: 26) - bilet normalny
+[KASJER 1] Turysta 8 (wiek: 14) - bilet normalny
+[KASJER 1] Turysta 9 (wiek: 66) - bilet normalny
+[KASJER 1] Turysta 10 (wiek: 46) - bilet normalny
+[KASJER 1] Turysta 11 (wiek: 40) - bilet normalny
+[KASJER 1] Turysta 12 (wiek: 36) - bilet normalny
+[KASJER 1] Turysta 13 (wiek: 40) - bilet normalny
+[KASJER 1] Turysta 14 (wiek: 3) - dziecko, bilet bezpłatny
+[KASJER 1] Turysta 15 (wiek: 13) - bilet normalny
+[KASJER 1] Turysta 16 (wiek: 33) - bilet normalny
+[KASJER 1] Turysta 17 (wiek: 8) - bilet normalny
+[KASJER 1] Turysta 18 (wiek: 32) - bilet normalny
+[KASJER 1] Turysta 19 (wiek: 64) - bilet normalny
+[KASJER 1] Turysta 20 (wiek: 23) - bilet normalny
+[KASJER 1] Turysta 21 (wiek: 37) - bilet normalny
+[KASJER 1] Turysta 22 (wiek: 69) - bilet normalny
+[KASJER 1] Turysta 23 (wiek: 49) - bilet normalny
+[KASJER 1] Turysta 24 (wiek: 32) - bilet normalny
+[KASJER 1] Turysta 25 (wiek: 12) - bilet normalny
+[KASJER 1] Raport: Przewodnik 1 zakończył wycieczkę (trasa 2, 5 osób)
+[KASJER 1] Turysta 4 - wyjście (czas w parku: 17:13:19)
+[KASJER 1] Turysta 1 - wyjście (czas w parku: 17:13:19)
+[KASJER 1] Turysta 5 - wyjście (czas w parku: 17:13:19)
+[KASJER 1] Turysta 3 - wyjście (czas w parku: 17:13:19)
+[KASJER 1] Turysta 2 - wyjście (czas w parku: 17:13:19)
+[KASJER 1] Raport: Przewodnik 2 zakończył wycieczkę (trasa 1, 5 osób)
+[KASJER 1] Turysta 10 - wyjście (czas w parku: 17:13:22)
+[KASJER 1] Turysta 9 - wyjście (czas w parku: 17:13:22)
+[KASJER 1] Turysta 6 - wyjście (czas w parku: 17:13:22)
+[KASJER 1] Turysta 7 - wyjście (czas w parku: 17:13:22)
+[KASJER 1] Turysta 8 - wyjście (czas w parku: 17:13:22)
+[KASJER 1] Raport: Przewodnik 3 zakończył wycieczkę (trasa 1, 5 osób)
+[KASJER 1] Turysta 14 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 12 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 15 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 13 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 11 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 23 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 22 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 21 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 24 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Turysta 25 - wyjście (czas w parku: 17:13:29)
+[KASJER 1] Raport: Przewodnik 1 - ewakuacja (awaria)
+[KASJER 1] Raport: Przewodnik 4 zakończył wycieczkę (trasa 1, 5 osób)
+[KASJER 1] Turysta 20 - wyjście (czas w parku: 17:13:38)
+[KASJER 1] Turysta 17 - wyjście (czas w parku: 17:13:38)
+[KASJER 1] Turysta 19 - wyjście (czas w parku: 17:13:38)
+[KASJER 1] Turysta 18 - wyjście (czas w parku: 17:13:38)
+[KASJER 1] Turysta 16 - wyjście (czas w parku: 17:13:38)

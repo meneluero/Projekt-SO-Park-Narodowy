@@ -84,7 +84,9 @@ int main(int argc, char* argv[]) {
             }
             
             // rejestracja wejscia w statystykach
+            sem_lock(sem_id, SEM_STATS_MUTEX);
             park->total_entered++;
+            sem_unlock(sem_id, SEM_STATS_MUTEX);
             
             
         } else if (message.msg_type == MSG_TYPE_EXIT) {
@@ -99,8 +101,10 @@ int main(int argc, char* argv[]) {
             }
             
             // rejestracja wyjscia
+            sem_lock(sem_id, SEM_STATS_MUTEX);
             park->total_exited++;
-            
+            sem_unlock(sem_id, SEM_STATS_MUTEX);
+                        
             
         } else if (message.msg_type == MSG_TYPE_REPORT) {
 
