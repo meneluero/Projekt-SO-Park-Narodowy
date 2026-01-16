@@ -1,5 +1,7 @@
 #include "common.h"
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 int main(int argc, char* argv[]) {
     // walidacja argumentow
@@ -24,29 +26,32 @@ int main(int argc, char* argv[]) {
     }
     
     // pobranie id semaforow
-    int sem_id = semget(SEM_KEY_ID, 5, 0666);
+    int sem_id = semget(SEM_KEY_ID, 10, 0666);
     if (sem_id == -1) {
         perror("[KASJER] Błąd semget");
         exit(1);
     }
     
     // tworzenie kolejki komunikatow
-    int msg_id = msgget(MSG_KEY_ID, IPC_CREAT | 0666);
+    int msg_id = msgget(MSG_KEY_ID, 0666);
     if (msg_id == -1) {
         perror("[KASJER] Błąd msgget");
         exit(1);
     }
     
     // otwarcie pliku logów do zapisu
-    FILE *log_file = fopen("park_log.txt", "a");
-    if (log_file == NULL) {
-        perror("[KASJER] Błąd otwierania pliku logów");
+    int log_fd = open("park_log.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (log_fd == -1) {
+        perror("[KASJER] Błąd open");
         exit(1);
     }
     
     printf("[KASJER %d] Otwieram kasę! Czekam na turystów...\n", id);
-    fprintf(log_file, "[KASJER %d] Rozpoczęcie pracy\n", id);
-    fflush(log_file);
+    char start_msg[256];
+    int len = snprintf(start_msg, sizeof(start_msg), "[KASJER %d] Rozpoczęcie pracy\n", id);
+    if (write(log_fd, start_msg, len) == -1) {
+        perror("[KASJER] Błąd write");
+    }
     
     // petla zycia kasjera - obsluguje komunikaty w nieskonczonosc
     while(1) {
@@ -64,60 +69,57 @@ int main(int argc, char* argv[]) {
             // turysta chce wejsc do parku
             
             // informacja o wejsciu
+            char log_msg[256];
+            int log_len;
+
             if (message.is_vip) {
-                printf("[KASJER %d] VIP Turysta %d (wiek: %d) - wejście bezpłatne (legitymacja PTTK)\n", 
-                       id, message.tourist_id, message.age);
-                fprintf(log_file, "[KASJER %d] VIP Turysta %d (wiek: %d) - wejście bezpłatne\n",
-                        id, message.tourist_id, message.age);
+                log_len = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] VIP Turysta %d (wiek: %d) - wejście bezpłatne\n", id, message.tourist_id, message.age);
             } else if (message.age < 7) {
-                printf("[KASJER %d] Turysta %d (wiek: %d) - wejście bezpłatne (dziecko <7 lat)\n",
-                       id, message.tourist_id, message.age);
-                fprintf(log_file, "[KASJER %d] Turysta %d (wiek: %d) - dziecko, bilet bezpłatny\n",
-                        id, message.tourist_id, message.age);
+                log_len = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] Turysta %d (wiek: %d) - dziecko, bilet bezpłatny\n", id, message.tourist_id, message.age);
             } else {
-                printf("[KASJER %d] Turysta %d (wiek: %d) - bilet opłacony\n",
-                       id, message.tourist_id, message.age);
-                fprintf(log_file, "[KASJER %d] Turysta %d (wiek: %d) - bilet normalny\n",
-                        id, message.tourist_id, message.age);
+                log_len = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] Turysta %d (wiek: %d) - bilet normalny\n", id, message.tourist_id, message.age);
+            }
+            if (write(log_fd, log_msg, log_len) == -1) {
+                perror("[KASJER] Błąd write");
             }
             
             // rejestracja wejscia w statystykach
             park->total_entered++;
             
-            fflush(log_file);
             
         } else if (message.msg_type == MSG_TYPE_EXIT) {
 
             // turysta wychodzi z parku (info od przewodnika)
             printf("[KASJER %d] Turysta %d - wyjście z parku\n", 
                    id, message.tourist_id);
-            fprintf(log_file, "[KASJER %d] Turysta %d - wyjście (czas w parku: %s)\n",
-                    id, message.tourist_id, message.info);
+            char exit_msg[256];
+            int exit_len = snprintf(exit_msg, sizeof(exit_msg), "[KASJER %d] Turysta %d - wyjście (czas w parku: %s)\n", id, message.tourist_id, message.info);
+            if (write(log_fd, exit_msg, exit_len) == -1) {
+                perror("[KASJER] Błąd write");
+            }
             
             // rejestracja wyjscia
             park->total_exited++;
             
-            fflush(log_file);
             
         } else if (message.msg_type == MSG_TYPE_REPORT) {
 
             // raport od przewodnika o zakonczeniu wycieczki
             printf("[KASJER %d] Raport od przewodnika: %s\n", id, message.info);
-            fprintf(log_file, "[KASJER %d] Raport: %s\n", id, message.info);
-            
-            fflush(log_file);
+            char report_msg[256];
+            int report_len = snprintf(report_msg, sizeof(report_msg), "[KASJER %d] Raport: %s\n", id, message.info);
+            if (write(log_fd, report_msg, report_len) == -1) {
+                perror("[KASJER] Błąd write");
+            }
             
         } else {
             // nieznany typ wiadomosci
             printf("[KASJER %d] Otrzymano nieznany typ komunikatu: %ld\n", id, message.msg_type);
         }
-        
-        // male opoznienie zeby nie zabierac 100% cpu
-        usleep(10000); // 10ms
     }
     
     // sprzatanie (nigdy nie powinno sie wykonac, ale dla formalnosci)
-    fclose(log_file);
+    close(log_fd);
     shmdt(park);
     
     return 0;
