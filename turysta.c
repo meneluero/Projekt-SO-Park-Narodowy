@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     // przylaczenie pamieci dzielonej
     // turysta nie tworzy (IPC_CREAT), on tylko pobiera (shmget) istniejaca
     int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0666);
-    int sem_id = semget(SEM_KEY_ID, 9, 0666);
+    int sem_id = semget(SEM_KEY_ID, 11, 0666);
     int msg_id = msgget(MSG_KEY_ID, 0666);
     
     if (shm_id == -1 || sem_id == -1 || msg_id == -1) {
@@ -94,11 +94,14 @@ int main(int argc, char* argv[]) {
     sem_lock(sem_id, 0);
     
     // sekcja krytyczna - jestesmy w parku!
+    sem_lock(sem_id, SEM_STATS_MUTEX);
+
     park->people_in_park++;
     
     if (is_vip) {
         park->vip_in_park++;
     }
+    sem_unlock(sem_id, SEM_STATS_MUTEX);
     
     printf("[TURYSTA %d] Wszedłem do parku! Idę do punktu zbiórki.\n", id);
     
@@ -190,11 +193,16 @@ int main(int argc, char* argv[]) {
     }
     
     // aktualizacja statystyk
-    park->people_in_park--;
-    
-    if (is_vip) {
+    sem_lock(sem_id, SEM_STATS_MUTEX);
+
+    if (park->people_in_park > 0) {
+        park->people_in_park--;
+    }
+    if (is_vip && park->vip_in_park > 0) {
         park->vip_in_park--;
     }
+    
+    sem_unlock(sem_id, SEM_STATS_MUTEX);
     
     // zwalniamy miejsce dla kogos w kolejce
     sem_unlock(sem_id, 0);
