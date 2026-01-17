@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
     int id = atoi(argv[1]);
     
     // podlaczenie do pamieci dzielonej
-    int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0666);
+    int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
     if (shm_id == -1) {
         perror("[KASJER] Błąd shmget");
         exit(1);
@@ -37,14 +37,14 @@ int main(int argc, char* argv[]) {
     }
     
     // pobranie id semaforow
-    int sem_id = semget(SEM_KEY_ID, 10, 0666);
+    int sem_id = semget(SEM_KEY_ID, 11, 0600);
     if (sem_id == -1) {
         perror("[KASJER] Błąd semget");
         exit(1);
     }
     
     // tworzenie kolejki komunikatow
-    int msg_id = msgget(MSG_KEY_ID, 0666);
+    int msg_id = msgget(MSG_KEY_ID, 0600);
     if (msg_id == -1) {
         perror("[KASJER] Błąd msgget");
         exit(1);

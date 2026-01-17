@@ -106,3 +106,40 @@
 [KASJER 1] Turysta 19 - wyjście (czas w parku: 15:05:41)
 [KASJER 1] Turysta 16 - wyjście (czas w parku: 15:05:41)
 [KASJER 1] Turysta 24 - wyjście (czas w parku: 15:05:41)
+[KASJER 1] Rozpoczęcie pracy
+[KASJER 1] Turysta 1 (wiek: 31) - bilet normalny
+[KASJER 1] Turysta 2 (wiek: 59) - bilet normalny
+[KASJER 1] Turysta 3 (wiek: 26) - bilet normalny
+[KASJER 1] Turysta 4 (wiek: 46) - bilet normalny
+[KASJER 1] Turysta 5 (wiek: 44) - bilet normalny
+[KASJER 1] Turysta 6 (wiek: 5) - dziecko, bilet bezpłatny
+[KASJER 1] Turysta 7 (wiek: 65) - bilet normalny
+[KASJER 1] Turysta 8 (wiek: 30) - bilet normalny
+[KASJER 1] Turysta 9 (wiek: 38) - bilet normalny
+[KASJER 1] Turysta 10 (wiek: 47) - bilet normalny
+[KASJER 1] Turysta 11 (wiek: 45) - bilet normalny
+[KASJER 1] Turysta 12 (wiek: 33) - bilet normalny
+[KASJER 1] Turysta 13 (wiek: 68) - bilet normalny
+[KASJER 1] Turysta 14 (wiek: 54) - bilet normalny
+[KASJER 1] Turysta 15 (wiek: 49) - bilet normalny
+[KASJER 1] Turysta 16 (wiek: 64) - bilet normalny
+[KASJER 1] Turysta 17 (wiek: 7) - bilet normalny
+[KASJER 1] Turysta 18 (wiek: 11) - bilet normalny
+[KASJER 1] Turysta 19 (wiek: 29) - bilet normalny
+[KASJER 1] VIP Turysta 20 (wiek: 58) - wejście bezpłatne
+[KASJER 1] Turysta 21 (wiek: 16) - bilet normalny
+[KASJER 1] VIP Turysta 22 (wiek: 60) - wejście bezpłatne
+[KASJER 1] Turysta 23 (wiek: 69) - bilet normalny
+[KASJER 1] VIP Turysta 24 (wiek: 16) - wejście bezpłatne
+[KASJER 1] Turysta 25 (wiek: 9) - bilet normalny
+[KASJER 1] Raport FIFO: Przewodnik 1 zakończył wycieczkę (trasa 1, 5 osób)
+[KASJER 1] Turysta 2 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 1 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 3 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 4 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 5 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 12 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 14 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 11 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 15 - wyjście (czas w parku: 18:49:55)
+[KASJER 1] Turysta 13 - wyjście (czas w parku: 18:49:55)
