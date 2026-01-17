@@ -38,6 +38,7 @@
 #define SHM_KEY_ID 1234
 #define SEM_KEY_ID 5678
 #define MSG_KEY_ID 9012
+#define FIFO_PATH "/tmp/park_reports.fifo"
 
 // typy komunikatow w kolejce
 #define MSG_TYPE_ENTRY 1 // turysta wchodzi do parku

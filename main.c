@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 // zmienne globalne
 int shm_id = -1;
@@ -15,6 +16,13 @@ void cleanup() {
     cleanup_done = 1;
 
     printf("\n[MAIN] Rozpoczęto sprzątanie zasobów...\n");
+
+    // usuniecie FIFO
+    if (unlink(FIFO_PATH) == -1) {
+        perror("[MAIN] Błąd unlink FIFO");
+    } else {
+        printf("[MAIN] FIFO usunięte.\n");
+    }
 
     struct sigaction sa;
     sa.sa_handler = SIG_IGN;
@@ -190,6 +198,16 @@ int main() {
         exit(1);
     }
     printf("[MAIN] Kolejka komunikatów utworzona (ID: %d).\n", msg_id);
+
+    // tworzenie fifo dla raportow przewodnikow
+    // usuwanie starego fifo jesli isntnial
+    unlink(FIFO_PATH);
+    
+    if (mkfifo(FIFO_PATH, 0660) == -1) {
+        perror("[MAIN] Błąd mkfifo");
+        exit(1);
+    }
+    printf("[MAIN] FIFO utworzone (%s).\n", FIFO_PATH);
     
     // -----------------------------------------------------------
     // uruchomienie kasjera

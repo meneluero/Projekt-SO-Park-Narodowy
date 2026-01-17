@@ -1,6 +1,7 @@
 #include "common.h"
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 
 // funkcja pomocnicza (wejscie na most)
 void enter_bridge(int id, int direction, struct ParkSharedMemory *park, int sem_id){
@@ -704,12 +705,18 @@ int main(int argc, char* argv[]) {
         report_msg.is_vip = 0;
         
         char report_info[256];
-        sprintf(report_info, "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)", id, route, M_GROUP_SIZE);
+        sprintf(report_info, "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)\n", id, route, M_GROUP_SIZE);
         strcpy(report_msg.info, report_info);
         
-        // wyslanie raportu do kasjera
-        if (msgsnd(msg_id, &report_msg, sizeof(report_msg) - sizeof(long), 0) == -1) {
-            perror("[PRZEWODNIK] Błąd msgsnd (raport)");
+        // wyslanie raportu do kasjera przez fifo
+        int fifo_fd = open(FIFO_PATH, O_WRONLY);
+        if (fifo_fd == -1) {
+            perror("[PRZEWODNIK] Błąd open FIFO");
+        } else {
+            if (write(fifo_fd, report_info, strlen(report_info)) == -1) {
+                perror("[PRZEWODNIK] Błąd write FIFO");
+            }
+            close(fifo_fd);
         }
         
         printf("[PRZEWODNIK %d] Wracam do bazy. Czekam na kolejną grupę...\n\n", id);
