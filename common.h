@@ -12,8 +12,8 @@
 #include <errno.h>
 #include <time.h>
 #include <string.h>
+#include <signal.h>
 
-// stale konfiguracyjne symulacji
 #define N_PARK_CAPACITY 10
 #define M_GROUP_SIZE 5
 #define X1_BRIDGE_CAP 3
@@ -21,71 +21,77 @@
 #define X3_FERRY_CAP 7 
 #define MAX_GROUPS 10 
 
-// czasy atrakcji
 #define BRIDGE_CROSS_TIME 2
 #define TOWER_VISIT_TIME 3 
 #define FERRY_TRAVEL_TIME 2 
 
-// fazy wycieczki
 #define PHASE_WAITING 0
 #define PHASE_READY 1
 #define PHASE_ATTRACTION 2
 #define PHASE_FINISHED 3
 
-// indeksy atrakcji w trasie
 #define ATTR_NONE 0
 #define ATTR_BRIDGE 1
 #define ATTR_TOWER 2 
 #define ATTR_FERRY 3
 
-// kierunki na moscie i promie
 #define DIR_NONE -1
 #define DIR_KA 0
 #define DIR_AK 1
 
-// pozycje promu
 #define FERRY_SHORE_START 0
 #define FERRY_SHORE_END 1
 
-// semafory podstawowe
 #define SEM_PARK_LIMIT 0  
 #define SEM_PRZEWODNIK 1
 #define SEM_QUEUE_MUTEX 2
 #define SEM_STATS_MUTEX 3
 
-// semafory atrakcji
 #define SEM_MOST_LIMIT 4 
 #define SEM_MOST_MUTEX 5
 #define SEM_WIEZA_LIMIT 6
 #define SEM_WIEZA_MUTEX 7
 #define SEM_PROM_LIMIT 8
 #define SEM_PROM_MUTEX 9
-#define SEM_PROM_ARRIVED 10
 
-// semafory dla grup
 #define SEM_GROUP_START_BASE 11
 #define SEM_GROUP_DONE_BASE 21
 #define SEM_GROUP_MUTEX 31
 
-#define TOTAL_SEMAPHORES 32
+#define SEM_TOURIST_ASSIGNED_BASE 32
+#define SEM_TOURIST_READ_DONE_BASE 37  
 
-// makra pomocnicze dla semaforow grupowych
+#define SEM_BRIDGE_WAIT_KA 42
+#define SEM_BRIDGE_WAIT_AK 43 
+
+#define SEM_FERRY_CONTROL 44
+#define SEM_FERRY_BOARD 45
+#define SEM_FERRY_ALL_ABOARD 46
+#define SEM_FERRY_ARRIVE 47
+#define SEM_FERRY_DISEMBARK 48
+
+#define SEM_MEMBER_GO_BASE 49  
+
+#define SEM_QUEUE_SLOTS 99
+
+#define TOTAL_SEMAPHORES 100
+
 #define SEM_GROUP_START(gid) (SEM_GROUP_START_BASE + (gid))
 #define SEM_GROUP_DONE(gid)  (SEM_GROUP_DONE_BASE + (gid))
+#define SEM_TOURIST_ASSIGNED(pos) (SEM_TOURIST_ASSIGNED_BASE + (pos))
+#define SEM_TOURIST_READ_DONE(pos) (SEM_TOURIST_READ_DONE_BASE + (pos))
+#define SEM_BRIDGE_WAIT(dir) ((dir) == DIR_KA ? SEM_BRIDGE_WAIT_KA : SEM_BRIDGE_WAIT_AK)
+#define SEM_MEMBER_GO(group, member) (SEM_MEMBER_GO_BASE + (group) * M_GROUP_SIZE + (member))
 
-// klucze ipc
 #define SHM_KEY_ID 1234
 #define SEM_KEY_ID 5678
 #define MSG_KEY_ID 9012
 #define FIFO_PATH "/tmp/park_reports.fifo"
 
-// typy komunikatow w kolejce
 #define MSG_TYPE_ENTRY 1
 #define MSG_TYPE_EXIT 2
 #define MSG_TYPE_REPORT 3
 
-
-// struktura komunikatu
 struct msg_buffer {
     long msg_type; 
     int tourist_id;
@@ -94,68 +100,60 @@ struct msg_buffer {
     char info[256]; 
 };
 
-// struktura stanu grupy
 struct GroupState {
     int active;
     int guide_id;
     pid_t guide_pid;
-    
+
     int route;
-    int current_attraction; 
+    int current_attraction;
     int attraction_step;
-    
+
     int tourists_ready;
     int tourists_on_attraction;
-    
-    // dane czlonkow grupy
+
     pid_t member_pids[M_GROUP_SIZE];
     int member_ids[M_GROUP_SIZE];
     int member_ages[M_GROUP_SIZE];
     int member_vips[M_GROUP_SIZE];
-    
-    // flagi sygnalow dla tej grupy
+    int member_is_caretaker[M_GROUP_SIZE];
+
     int signal_tower_evacuate;
     int signal_emergency_exit;
 };
 
-// struktura pamieci dzielonej
 struct ParkSharedMemory {
-    // statystyki ogolne
+
     int total_entered;
     int total_exited;
     int people_in_park;
     int vip_in_park;
-    
-    // kolejka oczekujacych na grupe
+
     int people_in_queue;
     int queue_ages[M_GROUP_SIZE];
     int queue_vips[M_GROUP_SIZE];
     pid_t queue_pids[M_GROUP_SIZE];
     int queue_ids[M_GROUP_SIZE];
-    
-    // system grup
+    int assigned_group_id[M_GROUP_SIZE];
+    int assigned_member_index[M_GROUP_SIZE];
+
     struct GroupState groups[MAX_GROUPS];
     int next_group_slot;
-    
-    // stan mostu
-    int bridge_current_count;
+
+    int bridge_on_bridge;
     int bridge_direction;
     int bridge_waiting[2];
-    int bridge_crossing[2];
-    
-    // stan wiezy
+
     int tower_current_count;
     pid_t tower_visitors[X2_TOWER_CAP];
-    
-    // stan promu
-    int ferry_current_count;
+
     int ferry_position;
-    int ferry_waiting[2];
-    int ferry_moving;
-    int ferry_group_id;
+    int ferry_passengers;
+    int ferry_expected;
+    int ferry_disembarked;
+    int ferry_current_group;
 };
 
-// union do operacji na semaforach
 union semun {
     int val;
     struct semid_ds *buf;
@@ -167,7 +165,7 @@ static inline void sem_lock(int sem_id, int sem_num) {
     op.sem_num = sem_num;
     op.sem_op = -1;
     op.sem_flg = 0;
-    
+
     while (semop(sem_id, &op, 1) == -1) {
         if (errno == EINTR) {
             continue;
@@ -177,12 +175,31 @@ static inline void sem_lock(int sem_id, int sem_num) {
     }
 }
 
+static inline int sem_lock_interruptible(int sem_id, int sem_num, volatile sig_atomic_t *interrupt_flag) {
+    struct sembuf op;
+    op.sem_num = sem_num;
+    op.sem_op = -1;
+    op.sem_flg = 0;
+
+    while (semop(sem_id, &op, 1) == -1) {
+        if (errno == EINTR) {
+            if (interrupt_flag != NULL && *interrupt_flag) {
+                return -1;
+            }
+            continue;
+        }
+        perror("Błąd sem_lock_interruptible");
+        exit(1);
+    }
+    return 0;
+}
+
 static inline void sem_unlock(int sem_id, int sem_num) {
     struct sembuf op;
     op.sem_num = sem_num;
     op.sem_op = 1;
     op.sem_flg = 0;
-    
+
     while (semop(sem_id, &op, 1) == -1) {
         if (errno == EINTR) {
             continue;
@@ -192,26 +209,25 @@ static inline void sem_unlock(int sem_id, int sem_num) {
     }
 }
 
-// proba opuszczenia semafora bez blokowania
 static inline int sem_trylock(int sem_id, int sem_num) {
     struct sembuf op;
     op.sem_num = sem_num;
     op.sem_op = -1;
     op.sem_flg = IPC_NOWAIT;
-    
+
     if (semop(sem_id, &op, 1) == -1) {
         if (errno == EAGAIN) {
-            return -1; // semafor niedostepny
+            return -1; 
         }
         if (errno == EINTR) {
-            return -1; // przerwane sygnalem
+            return -1; 
         }
         perror("Błąd sem_trylock");
         exit(1);
     }
     return 0;
 }
-// pobranie aktualnej wartosci semafora
+
 static inline int sem_getval(int sem_id, int sem_num) {
     int val = semctl(sem_id, sem_num, GETVAL);
     if (val == -1) {
@@ -221,17 +237,14 @@ static inline int sem_getval(int sem_id, int sem_num) {
     return val;
 }
 
-// pobieranie aktualnego czasu jako string
 static inline void get_timestamp(char *buffer, size_t size) {
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
     strftime(buffer, size, "%H:%M:%S", t);
 }
 
-// kolejnosc atrakcji dla danej trasy
 static inline int get_attraction_for_step(int route, int step) {
     if (route == 1) {
-        // trasa 1
         switch(step) {
             case 0: return ATTR_BRIDGE;
             case 1: return ATTR_TOWER;
@@ -239,7 +252,6 @@ static inline int get_attraction_for_step(int route, int step) {
             default: return ATTR_NONE;
         }
     } else {
-        // trasa 2
         switch(step) {
             case 0: return ATTR_FERRY;
             case 1: return ATTR_TOWER;
@@ -249,17 +261,14 @@ static inline int get_attraction_for_step(int route, int step) {
     }
 }
 
-// zwraca kierunek mostu dla danej trasy
 static inline int get_bridge_direction(int route) {
     return (route == 1) ? DIR_KA : DIR_AK;
 }
 
-// zwraca kierunek promu dla danej strony
 static inline int get_ferry_direction(int route) {
     return (route == 1) ? 0 : 1;
 }
 
-// dodaje pid do listy osob na wiezy
 static inline int tower_add_visitor(struct ParkSharedMemory *park, pid_t pid) {
     for (int i = 0; i < X2_TOWER_CAP; i++) {
         if (park->tower_visitors[i] == 0) {
@@ -267,10 +276,10 @@ static inline int tower_add_visitor(struct ParkSharedMemory *park, pid_t pid) {
             return i;
         }
     }
-    return -1; // brak miejsca nie powinno sie wydarzyc
+    return -1; 
+
 }
 
-// usuwa pid z listy osob na wiezy
 static inline void tower_remove_visitor(struct ParkSharedMemory *park, pid_t pid) {
     for (int i = 0; i < X2_TOWER_CAP; i++) {
         if (park->tower_visitors[i] == pid) {
@@ -280,7 +289,6 @@ static inline void tower_remove_visitor(struct ParkSharedMemory *park, pid_t pid
     }
 }
 
-// sprawdzy czy pid jest na wiezy
 static inline int tower_has_visitor(struct ParkSharedMemory *park, pid_t pid) {
     for (int i = 0; i < X2_TOWER_CAP; i++) {
         if (park->tower_visitors[i] == pid) {
