@@ -441,13 +441,13 @@ int main() {
 
     printf("[MAIN] Kasjer zakończył pracę. Generuję statystyki...\n");
 
-    printf("\n========== STATYSTYKI PARKU ==========\n");
+    printf("\n============== STATYSTYKI PARKU ==============\n");
     printf("Liczba przewodników:     %d\n", num_guides);
     printf("Wygenerowani turyści:    %d\n", num_tourists);
     printf("Weszło do parku:         %d\n", park->total_entered);
     printf("Wyszło z parku:          %d\n", park->total_exited);
     printf("Różnica (w parku):       %d\n", park->total_entered - park->total_exited);
-    printf("--------------------------------------\n");
+    printf("----------------------------------------------\n");
 
     if (park->total_entered == num_tourists && park->total_exited == num_tourists) {
         printf("Status: Sukces - wszyscy przeszli przez park!\n");
@@ -456,7 +456,7 @@ int main() {
     } else {
         printf("Status: Błąd - nie wszyscy weszli do parku\n");
     }
-    printf("======================================\n\n");
+    printf("==============================================\n\n");
 
     shmdt(park);
     return 0;

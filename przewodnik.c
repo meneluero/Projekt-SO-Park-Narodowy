@@ -316,6 +316,8 @@ int main(int argc, char* argv[]) {
 
         for (int i = 0; i < M_GROUP_SIZE; i++) {
             group->member_is_caretaker[i] = 0;
+            group->member_caretaker_of[i] = -1;
+            group->member_has_caretaker[i] = -1;
             if (i >= actual_group_size) {
                 group->member_pids[i] = 0;
                 group->member_ids[i] = 0;
@@ -335,11 +337,19 @@ int main(int argc, char* argv[]) {
         }
 
         for (int i = 0; i < actual_group_size; i++) {
-            if (group->member_ages[i] <= 5) {
+            if (group->member_ages[i] < 15) {
                 for (int j = 0; j < actual_group_size; j++) {
                     if (group->member_ages[j] >= 18 && !group->member_is_caretaker[j]) {
                         group->member_is_caretaker[j] = 1;
-                        printf("[PRZEWODNIK %d] Turysta %d (wiek %d) jest opiekunem dziecka %d (wiek %d) - nie wejdą na wieżę\n", id, group->member_ids[j], group->member_ages[j], group->member_ids[i], group->member_ages[i]);
+                        group->member_caretaker_of[j] = i;
+                        group->member_has_caretaker[i] = j;
+                        if (group->member_ages[i] <= 5) {
+                            printf("[PRZEWODNIK %d] Turysta %d (wiek %d) jest opiekunem dziecka %d (wiek %d) - nie wejdą na wieżę\n",
+                                   id, group->member_ids[j], group->member_ages[j], group->member_ids[i], group->member_ages[i]);
+                        } else {
+                            printf("[PRZEWODNIK %d] Turysta %d (wiek %d) jest opiekunem dziecka %d (wiek %d)\n",
+                                   id, group->member_ids[j], group->member_ages[j], group->member_ids[i], group->member_ages[i]);
+                        }
                         break;
                     }
                 }

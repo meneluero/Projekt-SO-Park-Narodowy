@@ -9,6 +9,8 @@ int g_id = -1;
 struct ParkSharedMemory *g_park = NULL;
 
 int g_is_caretaker = 0;
+int g_caretaker_child_age = -1;
+int g_my_caretaker_id = -1;
 
 int g_member_index = -1;
 int g_has_queue_slot = 0;
@@ -34,7 +36,11 @@ void do_bridge(int id, int age, int is_vip, int direction, struct ParkSharedMemo
     printf("[TURYSTA %d] Podchodzę do mostu (kierunek: %s)\n", id, direction == DIR_KA ? "K->A" : "A->K");
 
     if (age < 15) {
-        printf("[TURYSTA %d] Mam %d lat - idę przez most pod opieką dorosłego\n", id, age);
+        if (g_my_caretaker_id >= 0) {
+            printf("[TURYSTA %d] Mam %d lat - idę przez most pod opieką turysty %d\n", id, age, g_my_caretaker_id);
+        } else {
+            printf("[TURYSTA %d] Mam %d lat - idę przez most pod opieką dorosłego\n", id, age);
+        }
     }
 
     if (emergency_exit_flag) {
@@ -152,15 +158,19 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
         return;
     }
 
-    if (g_is_caretaker) {
-        printf("[TURYSTA %d] Jestem opiekunem małego dziecka - czekam na dole wieży.\n", id);
+    if (g_is_caretaker && g_caretaker_child_age <= 5) {
+        printf("[TURYSTA %d] Jestem opiekunem dziecka (wiek %d) - czekam na dole wieży.\n", id, g_caretaker_child_age);
         return;
     }
 
     printf("[TURYSTA %d] Podchodzę do wieży widokowej\n", id);
 
     if (age < 15) {
-        printf("[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką dorosłego\n", id, age);
+        if (g_my_caretaker_id >= 0) {
+            printf("[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką turysty %d\n", id, age, g_my_caretaker_id);
+        } else {
+            printf("[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką dorosłego\n", id, age);
+        }
     }
 
     if (emergency_exit_flag) {
@@ -237,7 +247,11 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
     printf("[TURYSTA %d] Podchodzę do promu\n", id);
 
     if (age < 15) {
-        printf("[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką dorosłego\n", id, age);
+        if (g_my_caretaker_id >= 0) {
+            printf("[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką turysty %d\n", id, age, g_my_caretaker_id);
+        } else {
+            printf("[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką dorosłego\n", id, age);
+        }
     }
 
     if (is_vip) {
@@ -433,8 +447,22 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         if (my_group->member_pids[i] == getpid()) {
             g_is_caretaker = my_group->member_is_caretaker[i];
+
             if (g_is_caretaker) {
-                printf("[TURYSTA %d] Jestem opiekunem małego dziecka - nie wejdę na wieżę\n", id);
+                int child_idx = my_group->member_caretaker_of[i];
+                if (child_idx >= 0) {
+                    g_caretaker_child_age = my_group->member_ages[child_idx];
+                }
+                if (g_caretaker_child_age <= 5) {
+                    printf("[TURYSTA %d] Jestem opiekunem dziecka (wiek %d) - nie wejdę na wieżę\n", id, g_caretaker_child_age);
+                } else {
+                    printf("[TURYSTA %d] Jestem opiekunem dziecka (wiek %d)\n", id, g_caretaker_child_age);
+                }
+            }
+
+            int caretaker_idx = my_group->member_has_caretaker[i];
+            if (caretaker_idx >= 0) {
+                g_my_caretaker_id = my_group->member_ids[caretaker_idx];
             }
             break;
         }
