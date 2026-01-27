@@ -11,6 +11,7 @@ struct ParkSharedMemory *g_park = NULL;
 int g_is_caretaker = 0;
 
 int g_member_index = -1;
+int g_has_queue_slot = 0;
 
 void sigusr1_handler(int sig) {
     tower_evacuation_flag = 1;
@@ -110,12 +111,13 @@ void do_bridge(int id, int age, int is_vip, int direction, struct ParkSharedMemo
             printf("[TURYSTA %d] Przechodzę przez most...\n", id);
 
         } else {
-            printf("[TURYSTA %d] (Ewakuacja) Szybko schodzę z mostu.\n", id);
+            printf("[TURYSTA %d] Ewakuacja! Szybko schodzę z mostu.\n", id);
         }
+
+        sem_unlock(sem_id, SEM_MOST_LIMIT);
 
         sem_lock(sem_id, SEM_MOST_MUTEX);
         park->bridge_on_bridge--;
-        sem_unlock(sem_id, SEM_MOST_LIMIT);  
 
         printf("[TURYSTA %d] Zszedłem z mostu (pozostało: %d)\n", id, park->bridge_on_bridge);
 
@@ -229,7 +231,6 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
 }
 
 void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMemory *park, int sem_id) {
-    int entered_protocol = 0;  
 
     int boarded = 0;           
 
@@ -257,8 +258,6 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
         return;  
 
     }
-
-    entered_protocol = 1;
 
     if (emergency_exit_flag) {
 
@@ -289,9 +288,9 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
         printf("[TURYSTA %d] Wysiadłem z promu\n", id);
     } else if (emergency_exit_flag) {
 
-        printf("[TURYSTA %d] (Ewakuacja) Pomijam podróż, czekam na sygnał przybycia.\n", id);
+        printf("[TURYSTA %d] Ewakuacja! Pomijam podróż, czekam na sygnał przybycia.\n", id);
         sem_lock(sem_id, SEM_FERRY_ARRIVE);
-        printf("[TURYSTA %d] (Ewakuacja) Otrzymałem sygnał przybycia.\n", id);
+        printf("[TURYSTA %d] Ewakuacja! Otrzymałem sygnał przybycia.\n", id);
     }
 
     sem_unlock(sem_id, SEM_FERRY_DISEMBARK);
@@ -352,20 +351,6 @@ int main(int argc, char* argv[]) {
         printf("[TURYSTA %d] Przychodzę do parku (wiek: %d).\n", id, age);
     }
 
-    printf("[TURYSTA %d] Jestem przed kasą. Czekam na bilet...\n", id);
-
-    struct msg_buffer entry_msg;
-    entry_msg.msg_type = MSG_TYPE_ENTRY;
-    entry_msg.tourist_id = id;
-    entry_msg.age = age;
-    entry_msg.is_vip = is_vip;
-    strcpy(entry_msg.info, "wejście do parku");
-
-    if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
-        perror("[TURYSTA] Błąd msgsnd (wejście)");
-        exit(1);
-    }
-
     sem_lock(sem_id, SEM_PARK_LIMIT);
 
     sem_lock(sem_id, SEM_STATS_MUTEX);
@@ -382,6 +367,8 @@ int main(int argc, char* argv[]) {
         goto cleanup;
     }
 
+    g_has_queue_slot = 1;
+
     sem_lock(sem_id, SEM_QUEUE_MUTEX);
 
     int my_position = park->people_in_queue;
@@ -394,6 +381,20 @@ int main(int argc, char* argv[]) {
     int current_count = park->people_in_queue;
 
     sem_unlock(sem_id, SEM_QUEUE_MUTEX);
+
+    printf("[TURYSTA %d] Jestem w kolejce. Kupuję bilet...\n", id);
+
+    struct msg_buffer entry_msg;
+    entry_msg.msg_type = MSG_TYPE_ENTRY;
+    entry_msg.tourist_id = id;
+    entry_msg.age = age;
+    entry_msg.is_vip = is_vip;
+    strcpy(entry_msg.info, "wejście do parku");
+
+    if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
+        perror("[TURYSTA] Błąd msgsnd (wejście)");
+        exit(1);
+    }
 
     printf("[TURYSTA %d] Czekam na przewodnika. (Kolejka: %d/%d)\n", id, current_count, M_GROUP_SIZE);
 
@@ -411,7 +412,10 @@ int main(int argc, char* argv[]) {
     g_member_index = park->assigned_member_index[my_position];
     sem_unlock(sem_id, SEM_QUEUE_MUTEX);
 
+    g_has_queue_slot = 0;
+
     sem_unlock(sem_id, SEM_TOURIST_READ_DONE(my_position));
+
     printf("[TURYSTA %d] Potwierdzam odczyt, przydzielony do grupy %d.\n", id, my_group_id);
 
     if (my_group_id < 0 || my_group_id >= MAX_GROUPS) {
@@ -436,7 +440,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    sem_lock(sem_id, SEM_MEMBER_GO(my_group_id, g_member_index));
+    sem_lock(sem_id, SEM_MEMBER_GO(my_group_id));
 
     int route = my_group->route;
 
@@ -460,7 +464,7 @@ int main(int argc, char* argv[]) {
                     break;
             }
         } else {
-            printf("[TURYSTA %d] (Ewakuacja) Pomijam atrakcję %d, ale zgłaszam obecność.\n", id, attraction);
+            printf("[TURYSTA %d] Ewakuacja! Pomijam atrakcję %d, ale zgłaszam obecność.\n", id, attraction);
 
             if (attraction == ATTR_FERRY) {
                 do_ferry(id, my_group_id, age, is_vip, park, sem_id);
@@ -474,13 +478,19 @@ int main(int argc, char* argv[]) {
         }
 
         if (step < 2) {
-            sem_lock(sem_id, SEM_MEMBER_GO(my_group_id, g_member_index));
+            sem_lock(sem_id, SEM_MEMBER_GO(my_group_id));
         }
     }
 
     printf("[TURYSTA %d] Koniec wycieczki. Wracam do kasy.\n", id);
 
 cleanup:
+    if (g_has_queue_slot) {
+        sem_unlock(sem_id, SEM_QUEUE_SLOTS);
+        g_has_queue_slot = 0;
+        printf("[TURYSTA %d] Zwolniłem slot w kolejce.\n", id);
+    }
+
     printf("[TURYSTA %d] Wychodzę z parku.\n", id);
 
     struct msg_buffer exit_msg;

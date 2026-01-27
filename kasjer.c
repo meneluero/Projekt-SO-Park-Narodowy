@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    log_fd = open("park_log.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    log_fd = open("park_log.txt", O_WRONLY | O_CREAT | O_APPEND, 0600);
     if (log_fd == -1) {
         perror("[KASJER] Błąd open");
         exit(1);
@@ -76,14 +76,14 @@ int main(int argc, char* argv[]) {
     snprintf(start_msg, sizeof(start_msg), "[KASJER %d] Rozpoczęcie pracy\n", id);
     write_log(start_msg);
 
-    pid_t pid = fork();
+    pid_t fifo_pid = fork();
 
-    if (pid == -1) {
+    if (fifo_pid == -1) {
         perror("[KASJER] Błąd fork");
         exit(1);
     }
 
-    if (pid == 0) {
+    if (fifo_pid == 0) {
 
         int fifo_fd = open(FIFO_PATH, O_RDWR);
         if (fifo_fd == -1) {
@@ -148,7 +148,20 @@ int main(int argc, char* argv[]) {
 
                 sem_lock(sem_id, SEM_STATS_MUTEX);
                 park->total_entered++;
+                int entered = park->total_entered;
+                int expected = park->total_expected;
                 sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+                if (entered == expected) {
+                    sem_lock(sem_id, SEM_QUEUE_MUTEX);
+                    int in_queue = park->people_in_queue;
+                    sem_unlock(sem_id, SEM_QUEUE_MUTEX);
+
+                    if (in_queue > 0) {
+                        printf("[KASJER %d] Wszyscy turyści weszli! Budzę przewodnika dla niepełnej grupy (%d osób).\n", id, in_queue);
+                        sem_unlock(sem_id, SEM_PRZEWODNIK);
+                    }
+                }
 
             } else if (message.msg_type == MSG_TYPE_EXIT) {
                 printf("[KASJER %d] Turysta %d - wyjście z parku\n", id, message.tourist_id);
@@ -161,8 +174,11 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        printf("[KASJER %d] Zamykam kasę. Czekam na zakończenie wątku FIFO...\n", id);
-        wait(NULL);  
+        printf("[KASJER %d] Zamykam kasę. Wysyłam sygnał do wątku FIFO...\n", id);
+        kill(fifo_pid, SIGTERM);
+
+        printf("[KASJER %d] Czekam na zakończenie wątku FIFO...\n", id);
+        waitpid(fifo_pid, NULL, 0);
 
         printf("[KASJER %d] Zakończono pracę.\n", id);
     }

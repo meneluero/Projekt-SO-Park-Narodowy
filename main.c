@@ -155,12 +155,6 @@ void init_semaphores(int sem_id) {
         exit(1);
     }
 
-    arg.val = X3_FERRY_CAP;
-    if (semctl(sem_id, SEM_PROM_LIMIT, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_PROM_LIMIT");
-        exit(1);
-    }
-
     arg.val = 1;
     if (semctl(sem_id, SEM_PROM_MUTEX, SETVAL, arg) == -1) {
         perror("[MAIN] Błąd semctl SEM_PROM_MUTEX");
@@ -198,13 +192,6 @@ void init_semaphores(int sem_id) {
     }
 
     for (int i = 0; i < MAX_GROUPS; i++) {
-
-        arg.val = 0;
-        if (semctl(sem_id, SEM_GROUP_START(i), SETVAL, arg) == -1) {
-            perror("[MAIN] Błąd semctl SEM_GROUP_START");
-            exit(1);
-        }
-
         arg.val = 0;
         if (semctl(sem_id, SEM_GROUP_DONE(i), SETVAL, arg) == -1) {
             perror("[MAIN] Błąd semctl SEM_GROUP_DONE");
@@ -237,28 +224,35 @@ void init_semaphores(int sem_id) {
     }
 
     for (int g = 0; g < MAX_GROUPS; g++) {
-        for (int m = 0; m < M_GROUP_SIZE; m++) {
-            arg.val = 0;
-            if (semctl(sem_id, SEM_MEMBER_GO(g, m), SETVAL, arg) == -1) {
-                perror("[MAIN] Błąd semctl SEM_MEMBER_GO");
-                exit(1);
-            }
+        arg.val = 0;
+        if (semctl(sem_id, SEM_MEMBER_GO(g), SETVAL, arg) == -1) {
+            perror("[MAIN] Błąd semctl SEM_MEMBER_GO");
+            exit(1);
         }
     }
 
-    arg.val = M_GROUP_SIZE; 
+    arg.val = M_GROUP_SIZE;
     if (semctl(sem_id, SEM_QUEUE_SLOTS, SETVAL, arg) == -1) {
         perror("[MAIN] Błąd semctl SEM_QUEUE_SLOTS");
+        exit(1);
+    }
+
+    arg.val = MAX_GROUPS;
+    if (semctl(sem_id, SEM_GROUP_SLOTS, SETVAL, arg) == -1) {
+        perror("[MAIN] Błąd semctl SEM_GROUP_SLOTS");
         exit(1);
     }
 
     printf("[MAIN] Semafory zainicjalizowane pomyślnie.\n");
 }
 
-void init_shared_memory(struct ParkSharedMemory *park) {
+void init_shared_memory(struct ParkSharedMemory *park, int num_tourists) {
     printf("[MAIN] Inicjalizacja pamięci dzielonej...\n");
 
     memset(park, 0, sizeof(struct ParkSharedMemory));
+
+    park->total_expected = num_tourists;
+    printf("[MAIN] Oczekiwana liczba turystów: %d\n", num_tourists);
 
     park->bridge_direction = DIR_NONE;
     park->bridge_on_bridge = 0;
@@ -327,8 +321,8 @@ int main() {
     sigaction(SIGINT, &sa_int, NULL);
 
     printf("SYMULACJA PARKU NARODOWEGO\n");
-    int num_tourists = get_input("Podaj liczbę turystów", 5, 100);
-    int num_guides = get_input("Podaj liczbę przewodników", 1, MAX_GROUPS);
+    int num_tourists = get_input("Podaj liczbę turystów", 5, 5000);
+    int num_guides = get_input("Podaj liczbę przewodników", 2, MAX_GROUPS);
 
     printf("\n");
 
@@ -345,7 +339,7 @@ int main() {
         exit(1);
     }
 
-    init_shared_memory(park);
+    init_shared_memory(park, num_tourists);
 
     sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, IPC_CREAT | 0600);
     if (sem_id == -1) {
@@ -428,18 +422,41 @@ int main() {
             exit(1);
         }
 
-        if (i % 5 == 0) {
+        if (i % 100 == 0) {
             printf("[MAIN] Wygenerowano %d/%d turystów\n", i, num_tourists);
         }
     }
 
     printf("\n[MAIN] Wszyscy turyści weszli. Czekam na zakończenie zwiedzania...\n");
-
     for (int i = 0; i < num_tourists; i++) {
         wait(NULL);
     }
 
-    printf("\n[MAIN] Wszyscy turyści opuścili park. Koniec symulacji.\n");
+    printf("\n[MAIN] Wszyscy turyści zakończyli procesy. Wysyłam sygnał do kasjera...\n");
+
+    kill(kasjer_pid, SIGTERM);
+
+    printf("[MAIN] Czekam na zakończenie kasjera (przetwarzanie ostatnich wiadomości)...\n");
+    waitpid(kasjer_pid, NULL, 0);
+
+    printf("[MAIN] Kasjer zakończył pracę. Generuję statystyki...\n");
+
+    printf("\n========== STATYSTYKI PARKU ==========\n");
+    printf("Liczba przewodników:     %d\n", num_guides);
+    printf("Wygenerowani turyści:    %d\n", num_tourists);
+    printf("Weszło do parku:         %d\n", park->total_entered);
+    printf("Wyszło z parku:          %d\n", park->total_exited);
+    printf("Różnica (w parku):       %d\n", park->total_entered - park->total_exited);
+    printf("--------------------------------------\n");
+
+    if (park->total_entered == num_tourists && park->total_exited == num_tourists) {
+        printf("Status: Sukces - wszyscy przeszli przez park!\n");
+    } else if (park->total_entered == num_tourists) {
+        printf("Status: Wszyscy weszli, ale nie wszyscy wyszli\n");
+    } else {
+        printf("Status: Błąd - nie wszyscy weszli do parku\n");
+    }
+    printf("======================================\n\n");
 
     shmdt(park);
     return 0;
