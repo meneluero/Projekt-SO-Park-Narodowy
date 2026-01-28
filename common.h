@@ -14,6 +14,22 @@
 #include <string.h>
 #include <signal.h>
 
+#define CLR_RESET "\033[0m"
+#define CLR_RED "\033[0;31m"
+#define CLR_GREEN "\033[0;32m"
+#define CLR_YELLOW "\033[0;33m"
+#define CLR_BLUE "\033[0;34m"
+#define CLR_MAGENTA "\033[0;35m"
+#define CLR_CYAN "\033[0;36m"
+#define CLR_WHITE "\033[0;37m"
+#define CLR_ORANGE "\033[38;5;208m"
+#define CLR_GRAY "\033[38;5;245m"
+#define CLR_BOLD "\033[1m"
+
+#define CLR_BG_RED "\033[41m"
+#define CLR_BG_GREEN "\033[42m"
+#define CLR_BG_BLUE "\033[44m"
+
 #define N_PARK_CAPACITY 500
 #define M_GROUP_SIZE 5
 #define X1_BRIDGE_CAP 3
@@ -21,9 +37,9 @@
 #define X3_FERRY_CAP 7 
 #define MAX_GROUPS 10
 
-#define BRIDGE_CROSS_TIME 2
-#define TOWER_VISIT_TIME 3
-#define FERRY_TRAVEL_TIME 2 
+#define BRIDGE_CROSS_TIME 0
+#define TOWER_VISIT_TIME 0
+#define FERRY_TRAVEL_TIME 0 
 
 #define PHASE_WAITING 0
 #define PHASE_READY 1

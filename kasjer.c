@@ -12,7 +12,7 @@ void sigterm_handler(int sig) {
     (void)sig;  
 
     shutdown_flag = 1;
-    char msg[] = "\n[KASJER] Otrzymano SIGTERM. Kończę pracę.\n";
+    char msg[] = "\n" CLR_RED "[KASJER] Otrzymano SIGTERM. Kończę pracę." CLR_RESET "\n";
     write(STDOUT_FILENO, msg, sizeof(msg) - 1);
 }
 
@@ -26,7 +26,7 @@ void write_log(char *buffer) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        printf("[KASJER] Błąd: Brak ID kasjera!\n");
+        printf(CLR_RED "[KASJER] Błąd: Brak ID kasjera!" CLR_RESET "\n");
         exit(1);
     }
 
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    printf("[KASJER %d] Otwieram kasę!\n", id);
+    printf(CLR_YELLOW "[KASJER %d] Otwieram kasę!" CLR_RESET "\n", id);
     char start_msg[256];
     snprintf(start_msg, sizeof(start_msg), "[KASJER %d] Rozpoczęcie pracy\n", id);
     write_log(start_msg);
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
 
             char *line = strtok(fifo_buffer, "\n");
             while (line != NULL && !shutdown_flag) {
-                printf("[KASJER %d] Raport z FIFO: %s\n", id, line);
+                printf(CLR_YELLOW "[KASJER %d] Raport z FIFO: %s" CLR_RESET "\n", id, line);
 
                 char log_fifo[256];
                 snprintf(log_fifo, sizeof(log_fifo), "[KASJER %d] Raport FIFO: %s\n", id, line);
@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        printf("[KASJER-FIFO %d] Zamykam wątek FIFO.\n", id);
+        printf(CLR_YELLOW "[KASJER-FIFO %d] Zamykam wątek FIFO." CLR_RESET "\n", id);
         close(fifo_fd);
         exit(0);
 
@@ -124,7 +124,7 @@ int main(int argc, char* argv[]) {
                 if (errno == EINTR) {
 
                     if (shutdown_flag) {
-                        printf("[KASJER %d] Otrzymano SIGTERM, kończę obsługę kolejki.\n", id);
+                        printf(CLR_RED "[KASJER %d] Otrzymano SIGTERM, kończę obsługę kolejki." CLR_RESET "\n", id);
                         break;
                     }
                     continue;  
@@ -158,13 +158,13 @@ int main(int argc, char* argv[]) {
                     sem_unlock(sem_id, SEM_QUEUE_MUTEX);
 
                     if (in_queue > 0) {
-                        printf("[KASJER %d] Wszyscy turyści weszli! Budzę przewodnika dla niepełnej grupy (%d osób).\n", id, in_queue);
+                        printf(CLR_YELLOW "[KASJER %d] Wszyscy turyści weszli! Budzę przewodnika dla niepełnej grupy (%d osób)." CLR_RESET "\n", id, in_queue);
                         sem_unlock(sem_id, SEM_PRZEWODNIK);
                     }
                 }
 
             } else if (message.msg_type == MSG_TYPE_EXIT) {
-                printf("[KASJER %d] Turysta %d - wyjście z parku\n", id, message.tourist_id);
+                printf(CLR_YELLOW "[KASJER %d] Turysta %d - wyjście z parku" CLR_RESET "\n", id, message.tourist_id);
                 snprintf(log_msg, sizeof(log_msg), "[KASJER %d] Turysta %d - wyjście (czas w parku: %s)\n", id, message.tourist_id, message.info);
                 write_log(log_msg);
 
@@ -179,20 +179,20 @@ int main(int argc, char* argv[]) {
                     int in_q = park->people_in_queue;
                     sem_unlock(sem_id, SEM_QUEUE_MUTEX);
                     if (in_q > 0) {
-                        printf("[KASJER %d] Nadal %d osób w kolejce - ponawiam sygnał do przewodnika.\n", id, in_q);
+                        printf(CLR_YELLOW "[KASJER %d] Nadal %d osób w kolejce - ponawiam sygnał do przewodnika." CLR_RESET "\n", id, in_q);
                         sem_unlock(sem_id, SEM_PRZEWODNIK);
                     }
                 }
             }
         }
 
-        printf("[KASJER %d] Zamykam kasę. Wysyłam sygnał do wątku FIFO...\n", id);
+        printf(CLR_YELLOW "[KASJER %d] Zamykam kasę. Wysyłam sygnał do wątku FIFO..." CLR_RESET "\n", id);
         kill(fifo_pid, SIGTERM);
 
-        printf("[KASJER %d] Czekam na zakończenie wątku FIFO...\n", id);
+        printf(CLR_YELLOW "[KASJER %d] Czekam na zakończenie wątku FIFO..." CLR_RESET "\n", id);
         waitpid(fifo_pid, NULL, 0);
 
-        printf("[KASJER %d] Zakończono pracę.\n", id);
+        printf(CLR_YELLOW "[KASJER %d] Zakończono pracę." CLR_RESET "\n", id);
     }
 
     close(log_fd);
