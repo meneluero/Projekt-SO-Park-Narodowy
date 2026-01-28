@@ -83,31 +83,45 @@ void do_bridge(int id, int age, int is_vip, int direction, struct ParkSharedMemo
         sem_unlock(sem_id, SEM_MOST_MUTEX);
 
         if (sem_lock_interruptible(sem_id, SEM_BRIDGE_WAIT(direction), &emergency_exit_flag) == -1) {
-
             sem_lock(sem_id, SEM_MOST_MUTEX);
             if (park->bridge_waiting[direction] > 0) {
                 park->bridge_waiting[direction]--;
             }
             sem_unlock(sem_id, SEM_MOST_MUTEX);
             printf("[TURYSTA %d] Ewakuacja podczas czekania na zmianę kierunku mostu.\n", id);
-            return;  
-
+            return;
         }
-
-        if (sem_lock_interruptible(sem_id, SEM_MOST_LIMIT, &emergency_exit_flag) == -1) {
-
-            sem_unlock(sem_id, SEM_BRIDGE_WAIT(direction));
-            printf("[TURYSTA %d] Ewakuacja po obudzeniu - przekazuję miejsce.\n", id);
-            return;  
-
-        }
-
-        entered_bridge = 1;  
 
         sem_lock(sem_id, SEM_MOST_MUTEX);
         park->bridge_on_bridge++;
         int count = park->bridge_on_bridge;
         sem_unlock(sem_id, SEM_MOST_MUTEX);
+
+        if (sem_lock_interruptible(sem_id, SEM_MOST_LIMIT, &emergency_exit_flag) == -1) {
+            sem_lock(sem_id, SEM_MOST_MUTEX);
+            park->bridge_on_bridge--;
+            printf("[TURYSTA %d] Ewakuacja podczas czekania na miejsce na moście (po obudzeniu, pozostało: %d)\n", id, park->bridge_on_bridge);
+
+            if (park->bridge_on_bridge == 0) {
+                if (park->bridge_waiting[other_dir] > 0) {
+                    park->bridge_direction = other_dir;
+                    int to_wake = park->bridge_waiting[other_dir];
+                    park->bridge_waiting[other_dir] = 0;
+                    sem_unlock(sem_id, SEM_MOST_MUTEX);
+                    for (int i = 0; i < to_wake; i++) {
+                        sem_unlock(sem_id, SEM_BRIDGE_WAIT(other_dir));
+                    }
+                } else {
+                    park->bridge_direction = DIR_NONE;
+                    sem_unlock(sem_id, SEM_MOST_MUTEX);
+                }
+            } else {
+                sem_unlock(sem_id, SEM_MOST_MUTEX);
+            }
+            return;
+        }
+
+        entered_bridge = 1;
 
         printf("[TURYSTA %d] Obudzony! Wchodzę na most (%d osób)\n", id, count);
     }
@@ -218,8 +232,7 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
 
     tower_evacuation_flag = 0;
 
-    int tower_result = sem_timed_wait(sem_id, SEM_TOWER_WAIT, TOWER_VISIT_TIME,
-                                       &tower_evacuation_flag, &emergency_exit_flag);
+    int tower_result = sem_timed_wait(sem_id, SEM_TOWER_WAIT, TOWER_VISIT_TIME, &tower_evacuation_flag, &emergency_exit_flag);
 
     if (tower_result == -1) {
         if (tower_evacuation_flag) {
@@ -241,8 +254,6 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
 
 void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMemory *park, int sem_id) {
 
-    int boarded = 0;           
-
     printf("[TURYSTA %d] Podchodzę do promu\n", id);
 
     if (age < 15) {
@@ -259,51 +270,43 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
 
     if (emergency_exit_flag) {
         printf("[TURYSTA %d] Ewakuacja przed promem! Pomijam.\n", id);
-        return;  
-
+        return;
     }
 
     printf("[TURYSTA %d] Czekam na pozwolenie wsiadania na prom...\n", id);
 
     if (sem_lock_interruptible(sem_id, SEM_FERRY_BOARD, &emergency_exit_flag) == -1) {
-
-        printf("[TURYSTA %d] Ewakuacja podczas czekania na prom.\n", id);
-        return;  
-
+        printf("[TURYSTA %d] Ewakuacja podczas czekania na prom - wychodzę.\n", id);
+        return;
     }
 
-    if (emergency_exit_flag) {
-
-        printf("[TURYSTA %d] Ewakuacja po wejściu do protokołu - kontynuuję sygnalizację.\n", id);
-    } else {
-
+    int actually_boarded = 0;
+    if (!emergency_exit_flag) {
         sem_lock(sem_id, SEM_PROM_MUTEX);
         park->ferry_passengers++;
         int passengers = park->ferry_passengers;
         sem_unlock(sem_id, SEM_PROM_MUTEX);
 
         printf("[TURYSTA %d] Wsiadłem na prom (%d osób na pokładzie)\n", id, passengers);
-        boarded = 1;
+        actually_boarded = 1;
+    } else {
+        printf("[TURYSTA %d] Ewakuacja po wejściu do protokołu - kontynuuję sygnalizację.\n", id);
     }
 
     sem_unlock(sem_id, SEM_FERRY_ALL_ABOARD);
+    
+    printf("[TURYSTA %d] Czekam na dopłynięcie promu...\n", id);
+    sem_lock(sem_id, SEM_FERRY_ARRIVE);
 
-    if (!emergency_exit_flag && boarded) {
-
-        printf("[TURYSTA %d] Płynę promem...\n", id);
-        sem_lock(sem_id, SEM_FERRY_ARRIVE);
-
+    if (actually_boarded) {
         sem_lock(sem_id, SEM_PROM_MUTEX);
         park->ferry_passengers--;
         park->ferry_disembarked++;
         sem_unlock(sem_id, SEM_PROM_MUTEX);
 
         printf("[TURYSTA %d] Wysiadłem z promu\n", id);
-    } else if (emergency_exit_flag) {
-
-        printf("[TURYSTA %d] Ewakuacja! Pomijam podróż, czekam na sygnał przybycia.\n", id);
-        sem_lock(sem_id, SEM_FERRY_ARRIVE);
-        printf("[TURYSTA %d] Ewakuacja! Otrzymałem sygnał przybycia.\n", id);
+    } else {
+        printf("[TURYSTA %d] Zakończyłem protokół promu (tryb ewakuacji)\n", id);
     }
 
     sem_unlock(sem_id, SEM_FERRY_DISEMBARK);
@@ -492,10 +495,6 @@ int main(int argc, char* argv[]) {
             }
         } else {
             printf("[TURYSTA %d] Ewakuacja! Pomijam atrakcję %d, ale zgłaszam obecność.\n", id, attraction);
-
-            if (attraction == ATTR_FERRY) {
-                do_ferry(id, my_group_id, age, is_vip, park, sem_id);
-            }
         }
 
         sem_unlock(sem_id, SEM_GROUP_DONE(my_group_id));

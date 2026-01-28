@@ -88,45 +88,39 @@ void guide_enter_bridge(int guide_id, int direction, struct ParkSharedMemory *pa
 
     sem_unlock(sem_id, SEM_MOST_LIMIT);
 
-    printf("[PRZEWODNIK %d] Zszedłem z mostu. Trzymam kierunek dla grupy.\n", guide_id);
-}
+    printf("[PRZEWODNIK %d] Zszedłem z mostu.\n", guide_id);
 
-void guide_exit_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id) {
     int other_dir = 1 - direction;
-
     sem_lock(sem_id, SEM_MOST_MUTEX);
     park->bridge_on_bridge--;
 
-    printf("[PRZEWODNIK %d] Zwalniam rezerwację mostu (pozostało: %d)\n", guide_id, park->bridge_on_bridge);
-
     if (park->bridge_on_bridge == 0) {
         if (park->bridge_waiting[other_dir] > 0) {
-
             park->bridge_direction = other_dir;
             int to_wake = park->bridge_waiting[other_dir];
             park->bridge_waiting[other_dir] = 0;
-
-            printf("[PRZEWODNIK %d] Zmieniam kierunek mostu, budzę %d czekających\n", guide_id, to_wake);
-
             sem_unlock(sem_id, SEM_MOST_MUTEX);
-
             for (int i = 0; i < to_wake; i++) {
                 sem_unlock(sem_id, SEM_BRIDGE_WAIT(other_dir));
             }
-        } else {
-
+        } else if (park->bridge_waiting[direction] == 0) {
             park->bridge_direction = DIR_NONE;
+            sem_unlock(sem_id, SEM_MOST_MUTEX);
+        } else {
             sem_unlock(sem_id, SEM_MOST_MUTEX);
         }
     } else {
         sem_unlock(sem_id, SEM_MOST_MUTEX);
     }
+
+    printf("[PRZEWODNIK %d] Czekam na drugiej stronie mostu na grupę.\n", guide_id);
 }
+
 
 void guide_take_ferry(int guide_id, int group_slot, int destination, struct ParkSharedMemory *park, int sem_id, int group_size) {
 
     int my_shore = 1 - destination;
-    struct GroupState *group = &park->groups[group_slot];
+    (void)group_slot;
 
     printf("[PRZEWODNIK %d] Podchodzę do promu (chcę na brzeg %d)\n", guide_id, destination);
 
@@ -155,23 +149,8 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
     }
 
     printf("[PRZEWODNIK %d] Czekam aż wszyscy wsiądą...\n", guide_id);
-    int boarded = 0;
     for (int i = 0; i < group_size; i++) {
-        if (group->signal_emergency_exit) {
-            printf("[PRZEWODNIK %d] Ewakuacja - przerywam oczekiwanie na turystów\n", guide_id);
-            break;
-        }
         sem_lock(sem_id, SEM_FERRY_ALL_ABOARD);
-        boarded++;
-    }
-
-    if (boarded < group_size) {
-        printf("[PRZEWODNIK %d] Nie wszyscy wsiedli (%d/%d) - tryb awaryjny\n", guide_id, boarded, group_size);
-        for (int i = boarded; i < group_size; i++) {
-            sem_unlock(sem_id, SEM_FERRY_BOARD);
-        }
-        sem_unlock(sem_id, SEM_FERRY_CONTROL);
-        return;
     }
 
     printf("[PRZEWODNIK %d] Wszyscy na pokładzie! Odpływamy.\n", guide_id);
@@ -187,30 +166,17 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
     }
 
     printf("[PRZEWODNIK %d] Czekam aż wszyscy wysiądą...\n", guide_id);
-    int disembarked = 0;
     for (int i = 0; i < group_size; i++) {
-        if (group->signal_emergency_exit) {
-            printf("[PRZEWODNIK %d] Ewakuacja - przerywam oczekiwanie na zejście\n", guide_id);
-            break;
-        }
         sem_lock(sem_id, SEM_FERRY_DISEMBARK);
-        disembarked++;
     }
 
-    if (disembarked < group_size) {
-        printf("[PRZEWODNIK %d] Nie wszyscy wysiedli (%d/%d)\n", guide_id, disembarked, group_size);
-        for (int i = disembarked; i < group_size; i++) {
-            sem_unlock(sem_id, SEM_FERRY_ARRIVE);
-        }
-    }
+    printf("[PRZEWODNIK %d] Wszyscy wysiedli z promu.\n", guide_id);
 
     sem_lock(sem_id, SEM_PROM_MUTEX);
     park->ferry_passengers = 0;
     park->ferry_expected = 0;
     park->ferry_current_group = -1;
     sem_unlock(sem_id, SEM_PROM_MUTEX);
-
-    printf("[PRZEWODNIK %d] Wszyscy wysiedli z promu.\n", guide_id);
 
     sem_unlock(sem_id, SEM_FERRY_CONTROL);
 }
@@ -279,7 +245,16 @@ int main(int argc, char* argv[]) {
 
         printf("[PRZEWODNIK %d] Obudzony! Czekam na wolny slot grupy...\n", id);
 
-        sem_lock(sem_id, SEM_GROUP_SLOTS);
+        if (sem_lock_interruptible(sem_id, SEM_GROUP_SLOTS, &shutdown_flag) == -1) {
+            printf("[PRZEWODNIK %d] Przerwano czekanie na slot grupy - kończę pracę.\n", id);
+            break;
+        }
+
+        if (shutdown_flag) {
+            sem_unlock(sem_id, SEM_GROUP_SLOTS);
+            printf("[PRZEWODNIK %d] Shutdown po uzyskaniu slotu - zwalniam i kończę.\n", id);
+            break;
+        }
 
         printf("[PRZEWODNIK %d] Slot grupy dostępny! Przydzielam grupę.\n", id);
 
@@ -362,6 +337,15 @@ int main(int argc, char* argv[]) {
         }
 
         sem_unlock(sem_id, SEM_QUEUE_MUTEX);
+
+        {
+            union semun reset_arg;
+            reset_arg.val = 0;
+            for (int i = 0; i < actual_group_size; i++) {
+                semctl(sem_id, SEM_TOURIST_ASSIGNED(i), SETVAL, reset_arg);
+                semctl(sem_id, SEM_TOURIST_READ_DONE(i), SETVAL, reset_arg);
+            }
+        }
 
         for (int i = 0; i < actual_group_size; i++) {
             sem_unlock(sem_id, SEM_TOURIST_ASSIGNED(i));
@@ -499,10 +483,6 @@ int main(int argc, char* argv[]) {
                 sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
             }
 
-            if (attraction == ATTR_BRIDGE && !emergency_before_start) {
-                guide_exit_bridge(id, get_bridge_direction(group->route), park, sem_id);
-            }
-            
             printf("[PRZEWODNIK %d] Wszyscy gotowi! Idziemy dalej.\n", id);
 
             group->tourists_ready = 0;
@@ -548,6 +528,21 @@ int main(int argc, char* argv[]) {
         group->active = 0;
 
         sem_unlock(sem_id, SEM_GROUP_SLOTS);
+
+        sem_lock(sem_id, SEM_STATS_MUTEX);
+        int check_entered = park->total_entered;
+        int check_expected = park->total_expected;
+        sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+        if (check_entered == check_expected) {
+            sem_lock(sem_id, SEM_QUEUE_MUTEX);
+            int check_queue = park->people_in_queue;
+            sem_unlock(sem_id, SEM_QUEUE_MUTEX);
+            if (check_queue > 0 && check_queue < M_GROUP_SIZE) {
+                printf("[PRZEWODNIK %d] Wykryłem niepełną ostatnią grupę (%d osób). Budzę przewodnika.\n", id, check_queue);
+                sem_unlock(sem_id, SEM_PRZEWODNIK);
+            }
+        }
 
         printf("[PRZEWODNIK %d] Zwolniłem slot grupy. Wracam do bazy.\n\n", id);
 
