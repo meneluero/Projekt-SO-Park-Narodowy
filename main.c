@@ -224,10 +224,12 @@ void init_semaphores(int sem_id) {
     }
 
     for (int g = 0; g < MAX_GROUPS; g++) {
-        arg.val = 0;
-        if (semctl(sem_id, SEM_MEMBER_GO(g), SETVAL, arg) == -1) {
-            perror("[MAIN] Błąd semctl SEM_MEMBER_GO");
-            exit(1);
+        for (int m = 0; m < M_GROUP_SIZE; m++) {
+            arg.val = 0;
+            if (semctl(sem_id, SEM_MEMBER_GO(g, m), SETVAL, arg) == -1) {
+                perror("[MAIN] Błąd semctl SEM_MEMBER_GO");
+                exit(1);
+            }
         }
     }
 
@@ -240,6 +242,12 @@ void init_semaphores(int sem_id) {
     arg.val = MAX_GROUPS;
     if (semctl(sem_id, SEM_GROUP_SLOTS, SETVAL, arg) == -1) {
         perror("[MAIN] Błąd semctl SEM_GROUP_SLOTS");
+        exit(1);
+    }
+
+    arg.val = 0;
+    if (semctl(sem_id, SEM_TOWER_WAIT, SETVAL, arg) == -1) {
+        perror("[MAIN] Błąd semctl SEM_TOWER_WAIT");
         exit(1);
     }
 
@@ -321,7 +329,7 @@ int main() {
     sigaction(SIGINT, &sa_int, NULL);
 
     printf("SYMULACJA PARKU NARODOWEGO\n");
-    int num_tourists = get_input("Podaj liczbę turystów", 5, 5000);
+    int num_tourists = get_input("Podaj liczbę turystów", 5, 30000);
     int num_guides = get_input("Podaj liczbę przewodników", 2, MAX_GROUPS);
 
     printf("\n");
@@ -407,11 +415,33 @@ int main() {
 
     srand(time(NULL));
 
+    int created_tourists = 0;
+    int finished_tourists = 0;
     for (int i = 1; i <= num_tourists; i++) {
         pid_t pid = fork();
         if (pid == -1) {
-            perror("[MAIN] Błąd fork (turysta)");
-            exit(1);
+            if (errno == EAGAIN || errno == ENOMEM) {
+                int reaped = 0;
+                while (waitpid(-1, NULL, WNOHANG) > 0) {
+                    finished_tourists++;
+                    reaped++;
+                }
+                if (reaped > 0) {
+                    i--; 
+                    continue;
+                }
+                if (waitpid(-1, NULL, 0) > 0) {
+                    finished_tourists++;
+                    i--;
+                    continue;
+                }
+                perror("[MAIN] Błąd fork (turysta) - nie można zwolnić procesów");
+                fprintf(stderr, "[MAIN] Kontynuuję z %d turystami.\n", created_tourists);
+                break;
+            }
+            perror("[MAIN] Błąd fork (turysta) - błąd krytyczny");
+            fprintf(stderr, "[MAIN] Kontynuuję z %d turystami.\n", created_tourists);
+            break;
         }
 
         if (pid == 0) {
@@ -422,13 +452,23 @@ int main() {
             exit(1);
         }
 
+        created_tourists++;
+
         if (i % 100 == 0) {
             printf("[MAIN] Wygenerowano %d/%d turystów\n", i, num_tourists);
         }
     }
 
-    printf("\n[MAIN] Wszyscy turyści weszli. Czekam na zakończenie zwiedzania...\n");
-    for (int i = 0; i < num_tourists; i++) {
+    if (created_tourists < num_tourists) {
+        sem_lock(sem_id, SEM_STATS_MUTEX);
+        park->total_expected = created_tourists;
+        sem_unlock(sem_id, SEM_STATS_MUTEX);
+        printf("[MAIN] Zaktualizowano total_expected: %d (planowano %d)\n", created_tourists, num_tourists);
+    }
+
+    printf("\n[MAIN] Wygenerowano %d turystów. Czekam na zakończenie zwiedzania...\n", created_tourists);
+    int remaining = created_tourists - finished_tourists;
+    for (int i = 0; i < remaining; i++) {
         wait(NULL);
     }
 

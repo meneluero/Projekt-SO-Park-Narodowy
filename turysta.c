@@ -218,16 +218,15 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
 
     tower_evacuation_flag = 0;
 
-    for (int t = 0; t < TOWER_VISIT_TIME; t++) {
+    int tower_result = sem_timed_wait(sem_id, SEM_TOWER_WAIT, TOWER_VISIT_TIME,
+                                       &tower_evacuation_flag, &emergency_exit_flag);
+
+    if (tower_result == -1) {
         if (tower_evacuation_flag) {
             printf("[TURYSTA %d] SIGUSR1! Natychmiast schodzę z wieży!\n", id);
-            break;
-        }
-        if (emergency_exit_flag) {
+        } else {
             printf("[TURYSTA %d] Ewakuacja ogólna! Schodzę z wieży!\n", id);
-            break;
         }
-
     }
 
     sem_lock(sem_id, SEM_WIEZA_MUTEX);
@@ -468,7 +467,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    sem_lock(sem_id, SEM_MEMBER_GO(my_group_id));
+    sem_lock(sem_id, SEM_MEMBER_GO(my_group_id, g_member_index));
 
     int route = my_group->route;
 
@@ -506,7 +505,7 @@ int main(int argc, char* argv[]) {
         }
 
         if (step < 2) {
-            sem_lock(sem_id, SEM_MEMBER_GO(my_group_id));
+            sem_lock(sem_id, SEM_MEMBER_GO(my_group_id, g_member_index));
         }
     }
 

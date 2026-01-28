@@ -170,7 +170,19 @@ int main(int argc, char* argv[]) {
 
                 sem_lock(sem_id, SEM_STATS_MUTEX);
                 park->total_exited++;
+                int ent = park->total_entered;
+                int exp = park->total_expected;
                 sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+                if (ent == exp) {
+                    sem_lock(sem_id, SEM_QUEUE_MUTEX);
+                    int in_q = park->people_in_queue;
+                    sem_unlock(sem_id, SEM_QUEUE_MUTEX);
+                    if (in_q > 0) {
+                        printf("[KASJER %d] Nadal %d osób w kolejce - ponawiam sygnał do przewodnika.\n", id, in_q);
+                        sem_unlock(sem_id, SEM_PRZEWODNIK);
+                    }
+                }
             }
         }
 

@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -pthread
+CFLAGS = -Wall -pthread -D_GNU_SOURCE
 
 all: main kasjer przewodnik turysta
 

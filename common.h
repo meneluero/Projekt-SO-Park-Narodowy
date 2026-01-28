@@ -22,7 +22,7 @@
 #define MAX_GROUPS 10
 
 #define BRIDGE_CROSS_TIME 2
-#define TOWER_VISIT_TIME 3 
+#define TOWER_VISIT_TIME 3
 #define FERRY_TRAVEL_TIME 2 
 
 #define PHASE_WAITING 0
@@ -70,16 +70,17 @@
 
 #define SEM_MEMBER_GO_BASE 39
 
-#define SEM_QUEUE_SLOTS 49
-#define SEM_GROUP_SLOTS 50
+#define SEM_QUEUE_SLOTS 89
+#define SEM_GROUP_SLOTS 90
+#define SEM_TOWER_WAIT 91
 
-#define TOTAL_SEMAPHORES 51
+#define TOTAL_SEMAPHORES 92
 
 #define SEM_GROUP_DONE(gid)  (SEM_GROUP_DONE_BASE + (gid))
 #define SEM_TOURIST_ASSIGNED(pos) (SEM_TOURIST_ASSIGNED_BASE + (pos))
 #define SEM_TOURIST_READ_DONE(pos) (SEM_TOURIST_READ_DONE_BASE + (pos))
 #define SEM_BRIDGE_WAIT(dir) ((dir) == DIR_KA ? SEM_BRIDGE_WAIT_KA : SEM_BRIDGE_WAIT_AK)
-#define SEM_MEMBER_GO(group) (SEM_MEMBER_GO_BASE + (group))
+#define SEM_MEMBER_GO(group, member) (SEM_MEMBER_GO_BASE + (group) * M_GROUP_SIZE + (member))
 
 #define SHM_KEY_ID 1234
 #define SEM_KEY_ID 5678
@@ -237,6 +238,49 @@ static inline int sem_getval(int sem_id, int sem_num) {
         exit(1);
     }
     return val;
+}
+
+static inline int sem_timed_wait(int sem_id, int sem_num, int seconds,volatile sig_atomic_t *flag1, volatile sig_atomic_t *flag2) {
+    struct sembuf op;
+    op.sem_num = sem_num;
+    op.sem_op = -1;
+    op.sem_flg = 0;
+
+    struct timespec deadline;
+    clock_gettime(CLOCK_MONOTONIC, &deadline);
+    deadline.tv_sec += seconds;
+
+    while (1) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        struct timespec remaining;
+        remaining.tv_sec = deadline.tv_sec - now.tv_sec;
+        remaining.tv_nsec = deadline.tv_nsec - now.tv_nsec;
+        if (remaining.tv_nsec < 0) {
+            remaining.tv_sec--;
+            remaining.tv_nsec += 1000000000L;
+        }
+        if (remaining.tv_sec < 0) {
+            return 1;
+        }
+
+        int ret = semtimedop(sem_id, &op, 1, &remaining);
+        if (ret == 0) {
+            return 0;
+        }
+        if (errno == EAGAIN) {
+            return 1;
+        }
+        if (errno == EINTR) {
+            if ((flag1 != NULL && *flag1) || (flag2 != NULL && *flag2)) {
+                return -1;
+            }
+            continue;
+        }
+        perror("Błąd sem_timed_wait");
+        exit(1);
+    }
 }
 
 static inline void get_timestamp(char *buffer, size_t size) {

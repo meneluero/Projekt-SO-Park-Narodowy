@@ -52,9 +52,7 @@ int find_free_group_slot(struct ParkSharedMemory *park) {
 
 }
 
-void guide_cross_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id) {
-    int other_dir = 1 - direction;
-
+void guide_enter_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id) {
     printf("[PRZEWODNIK %d] Podchodzę do mostu (kierunek: %s)\n", guide_id, direction == DIR_KA ? "K->A" : "A->K");
 
     sem_lock(sem_id, SEM_MOST_MUTEX);
@@ -90,10 +88,16 @@ void guide_cross_bridge(int guide_id, int direction, struct ParkSharedMemory *pa
 
     sem_unlock(sem_id, SEM_MOST_LIMIT);
 
+    printf("[PRZEWODNIK %d] Zszedłem z mostu. Trzymam kierunek dla grupy.\n", guide_id);
+}
+
+void guide_exit_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id) {
+    int other_dir = 1 - direction;
+
     sem_lock(sem_id, SEM_MOST_MUTEX);
     park->bridge_on_bridge--;
 
-    printf("[PRZEWODNIK %d] Zszedłem z mostu. (pozostało osób: %d)\n", guide_id, park->bridge_on_bridge);
+    printf("[PRZEWODNIK %d] Zwalniam rezerwację mostu (pozostało: %d)\n", guide_id, park->bridge_on_bridge);
 
     if (park->bridge_on_bridge == 0) {
         if (park->bridge_waiting[other_dir] > 0) {
@@ -117,8 +121,6 @@ void guide_cross_bridge(int guide_id, int direction, struct ParkSharedMemory *pa
     } else {
         sem_unlock(sem_id, SEM_MOST_MUTEX);
     }
-
-    printf("[PRZEWODNIK %d] Czekam na grupę za mostem.\n", guide_id);
 }
 
 void guide_take_ferry(int guide_id, int group_slot, int destination, struct ParkSharedMemory *park, int sem_id, int group_size) {
@@ -293,11 +295,14 @@ int main(int argc, char* argv[]) {
 
         struct GroupState *group = &park->groups[group_slot];
 
+        sem_lock(sem_id, SEM_STATS_MUTEX);
+        int all_entered = park->total_entered;
+        int all_expected = park->total_expected;
+        sem_unlock(sem_id, SEM_STATS_MUTEX);
+
         sem_lock(sem_id, SEM_QUEUE_MUTEX);
 
         int queue_size = park->people_in_queue;
-        int all_entered = park->total_entered;
-        int all_expected = park->total_expected;
         int actual_group_size = queue_size;
 
         if (queue_size < M_GROUP_SIZE) {
@@ -384,6 +389,9 @@ int main(int argc, char* argv[]) {
         union semun arg;
         arg.val = 0;
         semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, arg);
+        for (int k = 0; k < M_GROUP_SIZE; k++) {
+            semctl(sem_id, SEM_MEMBER_GO(group_slot, k), SETVAL, arg);
+        }
         group->route = (rand() % 2) + 1; 
 
         group->current_attraction = ATTR_NONE;
@@ -420,7 +428,7 @@ int main(int argc, char* argv[]) {
             send_emergency_exit(group, id);
 
             for (int k = 0; k < group->size; k++) {
-                sem_unlock(sem_id, SEM_MEMBER_GO(group_slot));
+                sem_unlock(sem_id, SEM_MEMBER_GO(group_slot, k));
             }
 
             int fifo_fd = open(FIFO_PATH, O_WRONLY);
@@ -448,7 +456,7 @@ int main(int argc, char* argv[]) {
             printf("[PRZEWODNIK %d] Startujemy! Budzę turystów.\n", id);
 
             for (int k = 0; k < group->size; k++) {
-                sem_unlock(sem_id, SEM_MEMBER_GO(group_slot));
+                sem_unlock(sem_id, SEM_MEMBER_GO(group_slot, k));
             }
 
         }
@@ -464,7 +472,7 @@ int main(int argc, char* argv[]) {
                 switch (attraction) {
                     case ATTR_BRIDGE:
 
-                        guide_cross_bridge(id, get_bridge_direction(group->route), park, sem_id);
+                        guide_enter_bridge(id, get_bridge_direction(group->route), park, sem_id);
                         break;
 
                     case ATTR_TOWER:
@@ -491,21 +499,29 @@ int main(int argc, char* argv[]) {
                 sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
             }
 
+            if (attraction == ATTR_BRIDGE && !emergency_before_start) {
+                guide_exit_bridge(id, get_bridge_direction(group->route), park, sem_id);
+            }
+            
             printf("[PRZEWODNIK %d] Wszyscy gotowi! Idziemy dalej.\n", id);
 
             group->tourists_ready = 0;
 
             if (step < 2) {
+                union semun reset_arg;
+                reset_arg.val = 0;
+                semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, reset_arg);
+
                 printf("[PRZEWODNIK %d] Przechodzimy do następnej atrakcji.\n", id);
 
                 int walk_time = 1;
                 if (has_young_children) {
-                    walk_time = (int)(walk_time * 1.5) + 1;
+                    //walk_time = (int)(walk_time * 1.5) + 1;
                     printf("[PRZEWODNIK %d] Wolniejsze tempo (dzieci) - %ds\n", id, walk_time);
                 }
 
                 for (int k = 0; k < group->size; k++) {
-                    sem_unlock(sem_id, SEM_MEMBER_GO(group_slot));
+                    sem_unlock(sem_id, SEM_MEMBER_GO(group_slot, k));
                 }
             }
         }
