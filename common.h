@@ -89,8 +89,13 @@
 #define SEM_QUEUE_SLOTS 89
 #define SEM_GROUP_SLOTS 90
 #define SEM_TOWER_WAIT 91
+#define SEM_CASH_QUEUE_MUTEX 92
+#define SEM_CASH_QUEUE_SLOTS 93
+#define SEM_TOWER_STAIRS_UP 94
+#define SEM_TOWER_STAIRS_DOWN 95
+#define SEM_FERRY_BOARD_VIP 96
 
-#define TOTAL_SEMAPHORES 92
+#define TOTAL_SEMAPHORES 97
 
 #define SEM_GROUP_DONE(gid)  (SEM_GROUP_DONE_BASE + (gid))
 #define SEM_TOURIST_ASSIGNED(pos) (SEM_TOURIST_ASSIGNED_BASE + (pos))
@@ -149,6 +154,7 @@ struct ParkSharedMemory {
     int vip_in_park;
 
     int people_in_queue;
+    int cash_queue_count;
     int queue_ages[N_PARK_CAPACITY];
     int queue_ids[N_PARK_CAPACITY];
     int queue_vips[N_PARK_CAPACITY];

@@ -99,10 +99,13 @@ void guide_enter_bridge(int guide_id, int direction, struct ParkSharedMemory *pa
             park->bridge_direction = other_dir;
             int to_wake = park->bridge_waiting[other_dir];
             park->bridge_waiting[other_dir] = 0;
-            sem_unlock(sem_id, SEM_MOST_MUTEX);
+
             for (int i = 0; i < to_wake; i++) {
                 sem_unlock(sem_id, SEM_BRIDGE_WAIT(other_dir));
             }
+            
+            sem_unlock(sem_id, SEM_MOST_MUTEX);
+            
         } else if (park->bridge_waiting[direction] == 0) {
             park->bridge_direction = DIR_NONE;
             sem_unlock(sem_id, SEM_MOST_MUTEX);
@@ -142,9 +145,35 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
 
     sem_unlock(sem_id, SEM_PROM_MUTEX);
 
-    printf(CLR_GREEN "[PRZEWODNIK %d] Wsiadłem na prom jako pierwszy. Zapraszam grupę (%d osób)." CLR_RESET "\n", guide_id, group_size);
-
+    int vip_priority_flags[M_GROUP_SIZE] = {0};
     for (int i = 0; i < group_size; i++) {
+        if (park->groups[group_slot].member_vips[i]) {
+            vip_priority_flags[i] = 1;
+        }
+    }
+    for (int i = 0; i < group_size; i++) {
+        if (park->groups[group_slot].member_vips[i] && park->groups[group_slot].member_ages[i] < 15) {
+            int caretaker_idx = park->groups[group_slot].member_has_caretaker[i];
+            if (caretaker_idx >= 0 && caretaker_idx < group_size) {
+                vip_priority_flags[caretaker_idx] = 1;
+            }
+        }
+    }
+
+    int vip_slots = 0;
+    for (int i = 0; i < group_size; i++) {
+        if (vip_priority_flags[i]) {
+            vip_slots++;
+        }
+    }
+    int normal_slots = group_size - vip_slots;
+
+    printf(CLR_GREEN "[PRZEWODNIK %d] Wsiadłem na prom jako pierwszy. Zapraszam grupę (%d osób, VIP-prio: %d)." CLR_RESET "\n", guide_id, group_size, vip_slots);
+
+    for (int i = 0; i < vip_slots; i++) {
+        sem_unlock(sem_id, SEM_FERRY_BOARD_VIP);
+    }
+    for (int i = 0; i < normal_slots; i++) {
         sem_unlock(sem_id, SEM_FERRY_BOARD);
     }
 

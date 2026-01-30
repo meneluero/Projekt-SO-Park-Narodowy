@@ -145,6 +145,16 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_WIEZA_MUTEX");
     }
 
+    arg.val = X2_TOWER_CAP;
+    if (semctl(sem_id, SEM_TOWER_STAIRS_UP, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_TOWER_STAIRS_UP");
+    }
+
+    arg.val = X2_TOWER_CAP;
+    if (semctl(sem_id, SEM_TOWER_STAIRS_DOWN, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_TOWER_STAIRS_DOWN");
+    }
+
     arg.val = 1;
     if (semctl(sem_id, SEM_PROM_MUTEX, SETVAL, arg) == -1) {
         fatal_error("[MAIN] Błąd semctl SEM_PROM_MUTEX");
@@ -158,6 +168,11 @@ void init_semaphores(int sem_id) {
     arg.val = 0;
     if (semctl(sem_id, SEM_FERRY_BOARD, SETVAL, arg) == -1) {
         fatal_error("[MAIN] Błąd semctl SEM_FERRY_BOARD");
+    }
+
+    arg.val = 0;
+    if (semctl(sem_id, SEM_FERRY_BOARD_VIP, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_BOARD_VIP");
     }
 
     arg.val = 0;
@@ -227,6 +242,16 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_TOWER_WAIT");
     }
 
+    arg.val = 1;
+    if (semctl(sem_id, SEM_CASH_QUEUE_MUTEX, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_CASH_QUEUE_MUTEX");
+    }
+
+    arg.val = N_PARK_CAPACITY;
+    if (semctl(sem_id, SEM_CASH_QUEUE_SLOTS, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_CASH_QUEUE_SLOTS");
+    }
+
     printf(CLR_WHITE "[MAIN] Semafory zainicjalizowane pomyślnie." CLR_RESET "\n");
 }
 
@@ -282,6 +307,9 @@ void cleanup_old_ipc() {
 
     int old_sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
     if (old_sem_id == -1) {
+        old_sem_id = semget(SEM_KEY_ID, 92, 0600);
+    }
+    if (old_sem_id == -1) {
         old_sem_id = semget(SEM_KEY_ID, 11, 0600);
     }
     if (old_sem_id != -1) {
@@ -303,10 +331,11 @@ int main() {
     sigemptyset(&sa_int.sa_mask);
     sa_int.sa_flags = 0;
     sigaction(SIGINT, &sa_int, NULL);
-
-    printf(CLR_BOLD CLR_WHITE CLR_BG_BLUE "SYMULACJA PARKU NARODOWEGO" CLR_RESET "\n");
+    printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
+    printf(CLR_BOLD CLR_GREEN "SYMULACJA PARKU NARODOWEGO" CLR_RESET "\n");
+    printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
     int num_tourists = get_input("Podaj liczbę turystów", 5, 30000);
-    int num_guides = get_input("Podaj liczbę przewodników", 2, MAX_GROUPS);
+    int num_guides = get_input("Podaj liczbę przewodników", 1, MAX_GROUPS);
 
     printf("\n");
 

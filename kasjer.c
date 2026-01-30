@@ -111,16 +111,17 @@ int main(int argc, char* argv[]) {
 
         struct msg_buffer message;
 
-        while(!shutdown_flag) {
-            if (msgrcv(msg_id, &message, sizeof(message) - sizeof(long), 0, 0) == -1) {
+        while (1) {
+            int flags = shutdown_flag ? IPC_NOWAIT : 0;
+            if (msgrcv(msg_id, &message, sizeof(message) - sizeof(long), 0, flags) == -1) {
                 if (errno == EINTR) {
-
                     if (shutdown_flag) {
-                        printf(CLR_RED "[KASJER %d] Otrzymano SIGTERM, kończę obsługę kolejki." CLR_RESET "\n", id);
-                        break;
+                        printf(CLR_RED "[KASJER %d] Otrzymano SIGTERM, opróżniam kolejkę." CLR_RESET "\n", id);
                     }
-                    continue;  
-
+                    continue;
+                }
+                if (shutdown_flag && errno == ENOMSG) {
+                    break;
                 }
                 report_error("[KASJER] Błąd msgrcv");
                 break;
