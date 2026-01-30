@@ -192,26 +192,22 @@ int main(int argc, char* argv[]) {
 
     int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
     if (shm_id == -1) {
-        perror("[PRZEWODNIK] Błąd shmget");
-        exit(1);
+        fatal_error("[PRZEWODNIK] Błąd shmget");
     }
 
     struct ParkSharedMemory *park = (struct ParkSharedMemory*)shmat(shm_id, NULL, 0);
     if (park == (void*)-1) {
-        perror("[PRZEWODNIK] Błąd shmat");
-        exit(1);
+        fatal_error("[PRZEWODNIK] Błąd shmat");
     }
 
     int sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
     if (sem_id == -1) {
-        perror("[PRZEWODNIK] Błąd semget");
-        exit(1);
+        fatal_error("[PRZEWODNIK] Błąd semget");
     }
 
     int msg_id = msgget(MSG_KEY_ID, 0600);
     if (msg_id == -1) {
-        perror("[PRZEWODNIK] Błąd msgget");
-        exit(1);
+        fatal_error("[PRZEWODNIK] Błąd msgget");
     }
 
     srand(time(NULL) + id * 100);
@@ -222,8 +218,7 @@ int main(int argc, char* argv[]) {
     sa_term.sa_flags = 0;  
 
     if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
-        perror("[PRZEWODNIK] Błąd sigaction SIGTERM");
-        exit(1);
+        fatal_error("[PRZEWODNIK] Błąd sigaction SIGTERM");
     }
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Melduję się w pracy! Czekam na grupy..." CLR_RESET "\n", id);
@@ -418,7 +413,7 @@ int main(int argc, char* argv[]) {
             int fifo_fd = open(FIFO_PATH, O_WRONLY);
             if (fifo_fd == -1) {
                 if (errno != ENXIO) {
-                    perror("[PRZEWODNIK] Błąd open FIFO");
+                    report_error("[PRZEWODNIK] Błąd open FIFO");
                 }
             } else {
                 char report[256];
@@ -513,13 +508,13 @@ int main(int argc, char* argv[]) {
             int fifo_fd = open(FIFO_PATH, O_WRONLY);
             if (fifo_fd == -1) {
                 if (errno != ENXIO) {
-                    perror("[PRZEWODNIK] Błąd open FIFO");
+                    report_error("[PRZEWODNIK] Błąd open FIFO");
                 }
             } else {
                 char report[256];
                 sprintf(report, "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)\n", id, group->route, M_GROUP_SIZE);
                 if (write(fifo_fd, report, strlen(report)) == -1) {
-                    perror("[PRZEWODNIK] Błąd write FIFO");
+                    report_error("[PRZEWODNIK] Błąd write FIFO");
                 }
                 close(fifo_fd);
             }

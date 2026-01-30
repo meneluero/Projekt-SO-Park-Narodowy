@@ -327,13 +327,17 @@ int main(int argc, char* argv[]) {
     sigemptyset(&sa1.sa_mask);
     sa1.sa_flags = 0; 
 
-    sigaction(SIGUSR1, &sa1, NULL);
+    if (sigaction(SIGUSR1, &sa1, NULL) == -1) {
+        fatal_error("[TURYSTA] Błąd sigaction SIGUSR1");
+    }
 
     struct sigaction sa2;
     sa2.sa_handler = sigusr2_handler;
     sigemptyset(&sa2.sa_mask);
     sa2.sa_flags = 0;
-    sigaction(SIGUSR2, &sa2, NULL);
+    if (sigaction(SIGUSR2, &sa2, NULL) == -1) {
+        fatal_error("[TURYSTA] Błąd sigaction SIGUSR2");
+    }
 
     srand(time(NULL) + id);
 
@@ -346,14 +350,12 @@ int main(int argc, char* argv[]) {
     int msg_id = msgget(MSG_KEY_ID, 0600);
 
     if (shm_id == -1 || sem_id == -1 || msg_id == -1) {
-        perror("[TURYSTA] Nie mogę znaleźć zasobów IPC");
-        exit(1);
+        fatal_error("[TURYSTA] Nie mogę znaleźć zasobów IPC");
     }
 
     struct ParkSharedMemory *park = (struct ParkSharedMemory*)shmat(shm_id, NULL, 0);
     if (park == (void*)-1) {
-        perror("[TURYSTA] Błąd shmat");
-        exit(1);
+        fatal_error("[TURYSTA] Błąd shmat");
     }
 
     g_sem_id = sem_id;
@@ -408,8 +410,7 @@ int main(int argc, char* argv[]) {
     strcpy(entry_msg.info, "wejście do parku");
 
     if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
-        perror("[TURYSTA] Błąd msgsnd (wejście)");
-        exit(1);
+        fatal_error("[TURYSTA] Błąd msgsnd (wejście)");
     }
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przewodnika. (Kolejka: %d/%d)" CLR_RESET "\n", id, current_count, M_GROUP_SIZE);
@@ -530,7 +531,7 @@ cleanup:
     strcpy(exit_msg.info, timestamp);
 
     if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
-        perror("[TURYSTA] Błąd msgsnd (wyjście)");
+        report_error("[TURYSTA] Błąd msgsnd (wyjście)");
     }
 
     sem_lock(sem_id, SEM_STATS_MUTEX);

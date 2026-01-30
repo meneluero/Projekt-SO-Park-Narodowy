@@ -19,7 +19,7 @@ void sigterm_handler(int sig) {
 void write_log(char *buffer) {
     if (log_fd != -1) {
         if (write(log_fd, buffer, strlen(buffer)) == -1) {
-            perror("[KASJER] Błąd write log");
+            report_error("[KASJER] Błąd write log");
         }
     }
 }
@@ -33,32 +33,27 @@ int main(int argc, char* argv[]) {
     int id = atoi(argv[1]);
     int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
     if (shm_id == -1) {
-        perror("[KASJER] Błąd shmget");
-        exit(1);
+        fatal_error("[KASJER] Błąd shmget");
     }
 
     struct ParkSharedMemory *park = (struct ParkSharedMemory*)shmat(shm_id, NULL, 0);
     if (park == (void*)-1) {
-        perror("[KASJER] Błąd shmat");
-        exit(1);
+        fatal_error("[KASJER] Błąd shmat");
     }
 
     int sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
     if (sem_id == -1) {
-        perror("[KASJER] Błąd semget");
-        exit(1);
+        fatal_error("[KASJER] Błąd semget");
     }
 
     int msg_id = msgget(MSG_KEY_ID, 0600);
     if (msg_id == -1) {
-        perror("[KASJER] Błąd msgget");
-        exit(1);
+        fatal_error("[KASJER] Błąd msgget");
     }
 
     log_fd = open("park_log.txt", O_WRONLY | O_CREAT | O_APPEND, 0600);
     if (log_fd == -1) {
-        perror("[KASJER] Błąd open");
-        exit(1);
+        fatal_error("[KASJER] Błąd open");
     }
 
     struct sigaction sa_term;
@@ -67,8 +62,7 @@ int main(int argc, char* argv[]) {
     sa_term.sa_flags = 0;  
 
     if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
-        perror("[KASJER] Błąd sigaction SIGTERM");
-        exit(1);
+        fatal_error("[KASJER] Błąd sigaction SIGTERM");
     }
 
     printf(CLR_YELLOW "[KASJER %d] Otwieram kasę!" CLR_RESET "\n", id);
@@ -79,16 +73,14 @@ int main(int argc, char* argv[]) {
     pid_t fifo_pid = fork();
 
     if (fifo_pid == -1) {
-        perror("[KASJER] Błąd fork");
-        exit(1);
+        fatal_error("[KASJER] Błąd fork");
     }
 
     if (fifo_pid == 0) {
 
         int fifo_fd = open(FIFO_PATH, O_RDWR);
         if (fifo_fd == -1) {
-            perror("[KASJER-FIFO] Błąd open FIFO");
-            exit(1);
+            fatal_error("[KASJER-FIFO] Błąd open FIFO");
         }
 
         char fifo_buffer[512];
@@ -130,7 +122,7 @@ int main(int argc, char* argv[]) {
                     continue;  
 
                 }
-                perror("[KASJER] Błąd msgrcv");
+                report_error("[KASJER] Błąd msgrcv");
                 break;
             }
 

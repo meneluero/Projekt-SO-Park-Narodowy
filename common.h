@@ -179,6 +179,15 @@ union semun {
     unsigned short *array;
 };
 
+static inline void report_error(const char *context) {
+    perror(context);
+}
+
+static inline void fatal_error(const char *context) {
+    perror(context);
+    exit(1);
+}
+
 static inline void sem_lock(int sem_id, int sem_num) {
     struct sembuf op;
     op.sem_num = sem_num;
@@ -189,8 +198,7 @@ static inline void sem_lock(int sem_id, int sem_num) {
         if (errno == EINTR) {
             continue;
         }
-        perror("Błąd sem_lock");
-        exit(1);
+        fatal_error("Błąd sem_lock");
     }
 }
 
@@ -207,8 +215,7 @@ static inline int sem_lock_interruptible(int sem_id, int sem_num, volatile sig_a
             }
             continue;
         }
-        perror("Błąd sem_lock_interruptible");
-        exit(1);
+        fatal_error("Błąd sem_lock_interruptible");
     }
     return 0;
 }
@@ -223,8 +230,7 @@ static inline void sem_unlock(int sem_id, int sem_num) {
         if (errno == EINTR) {
             continue;
         }
-        perror("Błąd sem_unlock");
-        exit(1);
+        fatal_error("Błąd sem_unlock");
     }
 }
 
@@ -241,8 +247,7 @@ static inline int sem_trylock(int sem_id, int sem_num) {
         if (errno == EINTR) {
             return -1; 
         }
-        perror("Błąd sem_trylock");
-        exit(1);
+        fatal_error("Błąd sem_trylock");
     }
     return 0;
 }
@@ -250,8 +255,7 @@ static inline int sem_trylock(int sem_id, int sem_num) {
 static inline int sem_getval(int sem_id, int sem_num) {
     int val = semctl(sem_id, sem_num, GETVAL);
     if (val == -1) {
-        perror("Błąd sem_getval");
-        exit(1);
+        fatal_error("Błąd sem_getval");
     }
     return val;
 }
@@ -294,8 +298,7 @@ static inline int sem_timed_wait(int sem_id, int sem_num, int seconds,volatile s
             }
             continue;
         }
-        perror("Błąd sem_timed_wait");
-        exit(1);
+        fatal_error("Błąd sem_timed_wait");
     }
 }
 

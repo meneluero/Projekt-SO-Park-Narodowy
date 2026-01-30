@@ -24,7 +24,7 @@ void cleanup() {
     printf("\n" CLR_WHITE "[MAIN] Rozpoczęto sprzątanie zasobów..." CLR_RESET "\n");
 
     if (unlink(FIFO_PATH) == -1 && errno != ENOENT) {
-        perror("[MAIN] Błąd unlink FIFO");
+        report_error("[MAIN] Błąd unlink FIFO");
     } else {
         printf(CLR_WHITE "[MAIN] FIFO usunięte." CLR_RESET "\n");
     }
@@ -43,7 +43,7 @@ void cleanup() {
 
     if (msg_id != -1) {
         if (msgctl(msg_id, IPC_RMID, NULL) == -1) {
-            perror("[MAIN] Błąd msgctl");
+            report_error("[MAIN] Błąd msgctl");
         } else {
             printf(CLR_WHITE "[MAIN] Kolejka usunięta." CLR_RESET "\n");
         }
@@ -51,7 +51,7 @@ void cleanup() {
 
     if (shm_id != -1) {
         if (shmctl(shm_id, IPC_RMID, NULL) == -1) {
-            perror("[MAIN] Błąd shmctl");
+            report_error("[MAIN] Błąd shmctl");
         } else {
             printf(CLR_WHITE "[MAIN] Pamięć dzielona usunięta." CLR_RESET "\n");
         }
@@ -59,7 +59,7 @@ void cleanup() {
 
     if (sem_id != -1) {
         if (semctl(sem_id, 0, IPC_RMID) == -1) {
-            perror("[MAIN] Błąd semctl");
+            report_error("[MAIN] Błąd semctl");
         } else {
             printf(CLR_WHITE "[MAIN] Semafory usunięte." CLR_RESET "\n");
         }
@@ -99,118 +99,99 @@ void init_semaphores(int sem_id) {
 
     arg.val = N_PARK_CAPACITY;
     if (semctl(sem_id, SEM_PARK_LIMIT, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_PARK_LIMIT");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_PARK_LIMIT");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_PRZEWODNIK, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_PRZEWODNIK");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_PRZEWODNIK");
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_QUEUE_MUTEX, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_QUEUE_MUTEX");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_QUEUE_MUTEX");
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_STATS_MUTEX, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_STATS_MUTEX");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_STATS_MUTEX");
     }
 
     arg.val = X1_BRIDGE_CAP;
     if (semctl(sem_id, SEM_MOST_LIMIT, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_MOST_LIMIT");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_MOST_LIMIT");
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_MOST_MUTEX, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_MOST_MUTEX");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_MOST_MUTEX");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_BRIDGE_WAIT_KA, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_BRIDGE_WAIT_KA");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_BRIDGE_WAIT_KA");
     }
     if (semctl(sem_id, SEM_BRIDGE_WAIT_AK, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_BRIDGE_WAIT_AK");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_BRIDGE_WAIT_AK");
     }
 
     arg.val = X2_TOWER_CAP;
     if (semctl(sem_id, SEM_WIEZA_LIMIT, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_WIEZA_LIMIT");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_WIEZA_LIMIT");
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_WIEZA_MUTEX, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_WIEZA_MUTEX");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_WIEZA_MUTEX");
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_PROM_MUTEX, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_PROM_MUTEX");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_PROM_MUTEX");
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_FERRY_CONTROL, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_FERRY_CONTROL");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_CONTROL");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_FERRY_BOARD, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_FERRY_BOARD");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_BOARD");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_FERRY_ALL_ABOARD, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_FERRY_ALL_ABOARD");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_ALL_ABOARD");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_FERRY_ARRIVE, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_FERRY_ARRIVE");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_ARRIVE");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_FERRY_DISEMBARK, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_FERRY_DISEMBARK");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_DISEMBARK");
     }
 
     for (int i = 0; i < MAX_GROUPS; i++) {
         arg.val = 0;
         if (semctl(sem_id, SEM_GROUP_DONE(i), SETVAL, arg) == -1) {
-            perror("[MAIN] Błąd semctl SEM_GROUP_DONE");
-            exit(1);
+            fatal_error("[MAIN] Błąd semctl SEM_GROUP_DONE");
         }
     }
 
     arg.val = 1;
     if (semctl(sem_id, SEM_GROUP_MUTEX, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_GROUP_MUTEX");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_GROUP_MUTEX");
     }
 
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         arg.val = 0;  
 
         if (semctl(sem_id, SEM_TOURIST_ASSIGNED(i), SETVAL, arg) == -1) {
-            perror("[MAIN] Błąd semctl SEM_TOURIST_ASSIGNED");
-            exit(1);
+            fatal_error("[MAIN] Błąd semctl SEM_TOURIST_ASSIGNED");
         }
     }
 
@@ -218,8 +199,7 @@ void init_semaphores(int sem_id) {
         arg.val = 0;  
 
         if (semctl(sem_id, SEM_TOURIST_READ_DONE(i), SETVAL, arg) == -1) {
-            perror("[MAIN] Błąd semctl SEM_TOURIST_READ_DONE");
-            exit(1);
+            fatal_error("[MAIN] Błąd semctl SEM_TOURIST_READ_DONE");
         }
     }
 
@@ -227,28 +207,24 @@ void init_semaphores(int sem_id) {
         for (int m = 0; m < M_GROUP_SIZE; m++) {
             arg.val = 0;
             if (semctl(sem_id, SEM_MEMBER_GO(g, m), SETVAL, arg) == -1) {
-                perror("[MAIN] Błąd semctl SEM_MEMBER_GO");
-                exit(1);
+                fatal_error("[MAIN] Błąd semctl SEM_MEMBER_GO");
             }
         }
     }
 
     arg.val = M_GROUP_SIZE;
     if (semctl(sem_id, SEM_QUEUE_SLOTS, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_QUEUE_SLOTS");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_QUEUE_SLOTS");
     }
 
     arg.val = MAX_GROUPS;
     if (semctl(sem_id, SEM_GROUP_SLOTS, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_GROUP_SLOTS");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_GROUP_SLOTS");
     }
 
     arg.val = 0;
     if (semctl(sem_id, SEM_TOWER_WAIT, SETVAL, arg) == -1) {
-        perror("[MAIN] Błąd semctl SEM_TOWER_WAIT");
-        exit(1);
+        fatal_error("[MAIN] Błąd semctl SEM_TOWER_WAIT");
     }
 
     printf(CLR_WHITE "[MAIN] Semafory zainicjalizowane pomyślnie." CLR_RESET "\n");
@@ -336,23 +312,20 @@ int main() {
 
     shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), IPC_CREAT | 0600);
     if (shm_id == -1) {
-        perror("[MAIN] Błąd shmget");
-        exit(1);
+        fatal_error("[MAIN] Błąd shmget");
     }
     printf(CLR_WHITE "[MAIN] Pamięć dzielona utworzona (ID: %d, rozmiar: %zu bajtów)." CLR_RESET "\n", shm_id, sizeof(struct ParkSharedMemory));
 
     struct ParkSharedMemory *park = (struct ParkSharedMemory*)shmat(shm_id, NULL, 0);
     if (park == (void*)-1) {
-        perror("[MAIN] Błąd shmat");
-        exit(1);
+        fatal_error("[MAIN] Błąd shmat");
     }
 
     init_shared_memory(park, num_tourists);
 
     sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, IPC_CREAT | 0600);
     if (sem_id == -1) {
-        perror("[MAIN] Błąd semget");
-        exit(1);
+        fatal_error("[MAIN] Błąd semget");
     }
     printf(CLR_WHITE "[MAIN] Zestaw semaforów utworzony (ID: %d, liczba: %d)." CLR_RESET "\n", sem_id, TOTAL_SEMAPHORES);
 
@@ -360,34 +333,30 @@ int main() {
 
     msg_id = msgget(MSG_KEY_ID, IPC_CREAT | 0600);
     if (msg_id == -1) {
-        perror("[MAIN] Błąd msgget");
-        exit(1);
+        fatal_error("[MAIN] Błąd msgget");
     }
     printf(CLR_WHITE "[MAIN] Kolejka komunikatów utworzona (ID: %d)." CLR_RESET "\n", msg_id);
 
     if (mkfifo(FIFO_PATH, 0660) == -1) {
-        perror("[MAIN] Błąd mkfifo");
-        exit(1);
+        fatal_error("[MAIN] Błąd mkfifo");
     }
     printf(CLR_WHITE "[MAIN] FIFO utworzone (%s)." CLR_RESET "\n", FIFO_PATH);
 
     dummy_fifo_fd = open(FIFO_PATH, O_RDWR | O_NONBLOCK);
     if (dummy_fifo_fd == -1) {
-        perror("[MAIN] Ostrzeżenie: Nie udało się otworzyć dummy FIFO");
+        report_error("[MAIN] Ostrzeżenie: Nie udało się otworzyć dummy FIFO");
     }
 
     printf("\n" CLR_WHITE "[MAIN] Zatrudniam kasjera..." CLR_RESET "\n");
 
     pid_t kasjer_pid = fork();
     if (kasjer_pid == -1) {
-        perror("[MAIN] Błąd fork (kasjer)");
-        exit(1);
+        fatal_error("[MAIN] Błąd fork (kasjer)");
     }
     if (kasjer_pid == 0) {
 
         execl("./kasjer", "kasjer", "1", NULL);
-        perror("[MAIN] Błąd execl kasjer");
-        exit(1);
+        fatal_error("[MAIN] Błąd execl kasjer");
     }
 
     printf(CLR_WHITE "[MAIN] Zatrudniam %d przewodników..." CLR_RESET "\n", num_guides);
@@ -395,16 +364,14 @@ int main() {
     for (int i = 1; i <= num_guides; i++) {
         pid_t pid = fork();
         if (pid == -1) {
-            perror("[MAIN] Błąd fork (przewodnik)");
-            exit(1);
+            fatal_error("[MAIN] Błąd fork (przewodnik)");
         }
         if (pid == 0) {
 
             char id_buff[16];
             sprintf(id_buff, "%d", i);
             execl("./przewodnik", "przewodnik", id_buff, NULL);
-            perror("[MAIN] Błąd execl przewodnik");
-            exit(1);
+            fatal_error("[MAIN] Błąd execl przewodnik");
         }
 
     }
@@ -435,11 +402,11 @@ int main() {
                     i--;
                     continue;
                 }
-                perror("[MAIN] Błąd fork (turysta) - nie można zwolnić procesów");
+            report_error("[MAIN] Błąd fork (turysta) - nie można zwolnić procesów");
                 fprintf(stderr, CLR_RED "[MAIN] Kontynuuję z %d turystami." CLR_RESET "\n", created_tourists);
                 break;
             }
-            perror("[MAIN] Błąd fork (turysta) - błąd krytyczny");
+            report_error("[MAIN] Błąd fork (turysta) - błąd krytyczny");
             fprintf(stderr, CLR_RED "[MAIN] Kontynuuję z %d turystami." CLR_RESET "\n", created_tourists);
             break;
         }
@@ -448,8 +415,7 @@ int main() {
             char id_buff[16];
             sprintf(id_buff, "%d", i);
             execl("./turysta", "turysta", id_buff, NULL);
-            perror("[MAIN-CHILD] Błąd execl turysta");
-            exit(1);
+            fatal_error("[MAIN-CHILD] Błąd execl turysta");
         }
 
         created_tourists++;
