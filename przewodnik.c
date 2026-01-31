@@ -58,7 +58,7 @@ int find_free_group_slot(struct ParkSharedMemory *park) {
 
 }
 
-void guide_enter_bridge(int guide_id, int direction, struct ParkSharedMemory *park, int sem_id) {
+void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direction, struct ParkSharedMemory *park, int sem_id) {
     printf(CLR_GREEN "[PRZEWODNIK %d] Podchodzę do mostu (kierunek: %s)" CLR_RESET "\n", guide_id, direction == DIR_KA ? "K->A" : "A->K");
 
     sem_lock(sem_id, SEM_MOST_MUTEX);
@@ -88,6 +88,10 @@ void guide_enter_bridge(int guide_id, int direction, struct ParkSharedMemory *pa
         sem_unlock(sem_id, SEM_MOST_MUTEX);
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Obudzony! Wchodzę na most. (osób: %d)" CLR_RESET "\n", guide_id, count);
+    }
+
+    for (int i = 0; i < group_size; i++) {
+        sem_unlock(sem_id, SEM_BRIDGE_GUIDE_READY(group_slot));
     }
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Przechodzę przez most..." CLR_RESET "\n", guide_id);
@@ -143,6 +147,8 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
         park->ferry_position = my_shore;
         printf(CLR_GREEN "[PRZEWODNIK %d] Prom przypłynął na mój brzeg" CLR_RESET "\n", guide_id);
     }
+
+    sem_lock(sem_id, SEM_FERRY_CAP);
 
     park->ferry_passengers = 1;
     park->ferry_expected = group_size + 1;
@@ -213,6 +219,7 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
     park->ferry_current_group = -1;
     sem_unlock(sem_id, SEM_PROM_MUTEX);
 
+    sem_unlock(sem_id, SEM_FERRY_CAP);
     sem_unlock(sem_id, SEM_FERRY_CONTROL);
 }
 
@@ -418,6 +425,9 @@ int main(int argc, char* argv[]) {
         if (semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, arg) == -1) {
             report_error("[PRZEWODNIK] Błąd semctl SEM_GROUP_DONE");
         }
+        if (semctl(sem_id, SEM_BRIDGE_GUIDE_READY(group_slot), SETVAL, arg) == -1) {
+            report_error("[PRZEWODNIK] Błąd semctl SEM_BRIDGE_GUIDE_READY");
+        }
         for (int k = 0; k < M_GROUP_SIZE; k++) {
             if (semctl(sem_id, SEM_MEMBER_GO(group_slot, k), SETVAL, arg) == -1) {
                 report_error("[PRZEWODNIK] Błąd semctl SEM_MEMBER_GO");
@@ -507,7 +517,7 @@ int main(int argc, char* argv[]) {
                 switch (attraction) {
                     case ATTR_BRIDGE:
 
-                        guide_enter_bridge(id, get_bridge_direction(group->route), park, sem_id);
+                        guide_enter_bridge(id, group_slot, group->size, get_bridge_direction(group->route), park, sem_id);
                         break;
 
                     case ATTR_TOWER:

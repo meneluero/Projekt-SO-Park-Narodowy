@@ -179,6 +179,11 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_FERRY_BOARD_VIP");
     }
 
+    arg.val = X3_FERRY_CAP;
+    if (semctl(sem_id, SEM_FERRY_CAP, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_CAP");
+    }
+
     arg.val = 0;
     if (semctl(sem_id, SEM_FERRY_ALL_ABOARD, SETVAL, arg) == -1) {
         fatal_error("[MAIN] Błąd semctl SEM_FERRY_ALL_ABOARD");
@@ -198,6 +203,13 @@ void init_semaphores(int sem_id) {
         arg.val = 0;
         if (semctl(sem_id, SEM_GROUP_DONE(i), SETVAL, arg) == -1) {
             fatal_error("[MAIN] Błąd semctl SEM_GROUP_DONE");
+        }
+    }
+
+    for (int i = 0; i < MAX_GROUPS; i++) {
+        arg.val = 0;
+        if (semctl(sem_id, SEM_BRIDGE_GUIDE_READY(i), SETVAL, arg) == -1) {
+            fatal_error("[MAIN] Błąd semctl SEM_BRIDGE_GUIDE_READY");
         }
     }
 
@@ -246,6 +258,16 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_TOWER_WAIT");
     }
 
+    arg.val = 0;
+    if (semctl(sem_id, SEM_TOWER_VIP_WAIT, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_TOWER_VIP_WAIT");
+    }
+
+    arg.val = 0;
+    if (semctl(sem_id, SEM_TOWER_NORMAL_WAIT, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_TOWER_NORMAL_WAIT");
+    }
+
     arg.val = 1;
     if (semctl(sem_id, SEM_CASH_QUEUE_MUTEX, SETVAL, arg) == -1) {
         fatal_error("[MAIN] Błąd semctl SEM_CASH_QUEUE_MUTEX");
@@ -277,6 +299,8 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists) {
     park->ferry_disembarked = 0;
     park->ferry_current_group = -1;
     park->next_group_slot = 0;
+    park->tower_waiting_vip = 0;
+    park->tower_waiting_normal = 0;
 
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         park->assigned_group_id[i] = -1;
@@ -343,6 +367,12 @@ int main() {
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
     int num_tourists = get_input("Podaj liczbę turystów", 5, 30000);
     int num_guides = get_input("Podaj liczbę przewodników", 1, MAX_GROUPS);
+
+    if (X3_FERRY_CAP < M_GROUP_SIZE + 1) {
+        fprintf(stderr, CLR_RED "[MAIN] Błąd konfiguracji: X3_FERRY_CAP (%d) < M_GROUP_SIZE+1 (%d). "
+                                "Prom nie pomieści grupy z przewodnikiem.\n" CLR_RESET, X3_FERRY_CAP, M_GROUP_SIZE + 1);
+        exit(1);
+    }
 
     printf("\n");
 

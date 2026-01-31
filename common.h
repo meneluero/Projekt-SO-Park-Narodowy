@@ -94,14 +94,19 @@
 #define SEM_TOWER_STAIRS_UP 94
 #define SEM_TOWER_STAIRS_DOWN 95
 #define SEM_FERRY_BOARD_VIP 96
+#define SEM_FERRY_CAP 97
+#define SEM_TOWER_VIP_WAIT 98
+#define SEM_TOWER_NORMAL_WAIT 99
+#define SEM_BRIDGE_GUIDE_READY_BASE 100
 
-#define TOTAL_SEMAPHORES 97
+#define TOTAL_SEMAPHORES 110
 
 #define SEM_GROUP_DONE(gid)  (SEM_GROUP_DONE_BASE + (gid))
 #define SEM_TOURIST_ASSIGNED(pos) (SEM_TOURIST_ASSIGNED_BASE + (pos))
 #define SEM_TOURIST_READ_DONE(pos) (SEM_TOURIST_READ_DONE_BASE + (pos))
 #define SEM_BRIDGE_WAIT(dir) ((dir) == DIR_KA ? SEM_BRIDGE_WAIT_KA : SEM_BRIDGE_WAIT_AK)
 #define SEM_MEMBER_GO(group, member) (SEM_MEMBER_GO_BASE + (group) * M_GROUP_SIZE + (member))
+#define SEM_BRIDGE_GUIDE_READY(group) (SEM_BRIDGE_GUIDE_READY_BASE + (group))
 
 #define SHM_KEY_ID 1234
 #define SEM_KEY_ID 5678
@@ -177,6 +182,8 @@ struct ParkSharedMemory {
 
     int tower_current_count;
     pid_t tower_visitors[X2_TOWER_CAP];
+    int tower_waiting_vip;
+    int tower_waiting_normal;
 
     int ferry_position;
     int ferry_passengers;
