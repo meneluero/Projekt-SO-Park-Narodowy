@@ -111,12 +111,14 @@
 #define SHM_KEY_ID 1234
 #define SEM_KEY_ID 5678
 #define MSG_KEY_ID 9012
+#define MSG_REPORT_KEY_ID 9013
 #define FIFO_PATH "/tmp/park_reports.fifo"
 #define TICKET_PRICE 50
 
 #define MSG_TYPE_ENTRY 1
 #define MSG_TYPE_EXIT 2
 #define MSG_TYPE_REPORT 3
+#define MSG_TYPE_EXIT_NOTICE 4
 
 struct msg_buffer {
     long msg_type; 

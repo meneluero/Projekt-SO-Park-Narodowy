@@ -9,6 +9,7 @@
 int shm_id = -1;
 int sem_id = -1;
 int msg_id = -1;
+int report_msg_id = -1;
 int cleanup_done = 0; 
 
 int dummy_fifo_fd = -1;
@@ -50,6 +51,14 @@ void cleanup() {
             report_error("[MAIN] Błąd msgctl");
         } else {
             printf(CLR_WHITE "[MAIN] Kolejka usunięta." CLR_RESET "\n");
+        }
+    }
+
+    if (report_msg_id != -1) {
+        if (msgctl(report_msg_id, IPC_RMID, NULL) == -1) {
+            report_error("[MAIN] Błąd msgctl (report queue)");
+        } else {
+            printf(CLR_WHITE "[MAIN] Kolejka raportowa usunięta." CLR_RESET "\n");
         }
     }
 
@@ -327,6 +336,12 @@ void cleanup_old_ipc() {
         printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą kolejkę komunikatów." CLR_RESET "\n");
     }
 
+    int old_report_id = msgget(MSG_REPORT_KEY_ID, 0600);
+    if (old_report_id != -1) {
+        msgctl(old_report_id, IPC_RMID, NULL);
+        printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą kolejkę raportową." CLR_RESET "\n");
+    }
+
     int old_shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
     if (old_shm_id != -1) {
         shmctl(old_shm_id, IPC_RMID, NULL);
@@ -403,6 +418,12 @@ int main() {
     }
     printf(CLR_WHITE "[MAIN] Kolejka komunikatów utworzona (ID: %d)." CLR_RESET "\n", msg_id);
 
+    report_msg_id = msgget(MSG_REPORT_KEY_ID, IPC_CREAT | 0600);
+    if (report_msg_id == -1) {
+        fatal_error("[MAIN] Błąd msgget (report queue)");
+    }
+    printf(CLR_WHITE "[MAIN] Kolejka raportowa utworzona (ID: %d)." CLR_RESET "\n", report_msg_id);
+
     if (mkfifo(FIFO_PATH, 0600) == -1) {
         fatal_error("[MAIN] Błąd mkfifo");
     }
@@ -423,6 +444,16 @@ int main() {
 
         execl("./kasjer", "kasjer", "1", NULL);
         fatal_error("[MAIN] Błąd execl kasjer");
+    }
+
+    printf(CLR_WHITE "[MAIN] Uruchamiam przewodnika-raportera..." CLR_RESET "\n");
+    pid_t reporter_pid = fork();
+    if (reporter_pid == -1) {
+        fatal_error("[MAIN] Błąd fork (przewodnik-raporter)");
+    }
+    if (reporter_pid == 0) {
+        execl("./przewodnik", "przewodnik", "reporter", NULL);
+        fatal_error("[MAIN] Błąd execl przewodnik-raporter");
     }
 
     printf(CLR_WHITE "[MAIN] Zatrudniam %d przewodników..." CLR_RESET "\n", num_guides);

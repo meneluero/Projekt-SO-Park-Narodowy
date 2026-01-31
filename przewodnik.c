@@ -14,6 +14,53 @@ void sigterm_handler(int sig) {
     }
 }
 
+static int run_exit_reporter(void) {
+    int report_msg_id = msgget(MSG_REPORT_KEY_ID, 0600);
+    if (report_msg_id == -1) {
+        fatal_error("[PRZEWODNIK-RAPORTER] Błąd msgget (report queue)");
+    }
+
+    int msg_id = msgget(MSG_KEY_ID, 0600);
+    if (msg_id == -1) {
+        fatal_error("[PRZEWODNIK-RAPORTER] Błąd msgget (main queue)");
+    }
+
+    printf(CLR_GREEN "[PRZEWODNIK-RAPORTER] Gotowy. Przekazuję wyjścia do kasy." CLR_RESET "\n");
+
+    while (1) {
+        struct msg_buffer notice;
+        int flags = shutdown_flag ? IPC_NOWAIT : 0;
+
+        if (msgrcv(report_msg_id, &notice, sizeof(notice) - sizeof(long), MSG_TYPE_EXIT_NOTICE, flags) == -1) {
+            if (errno == EINTR) {
+                if (shutdown_flag) {
+                    printf(CLR_GREEN "[PRZEWODNIK-RAPORTER] Otrzymano SIGTERM, kończę pracę." CLR_RESET "\n");
+                    continue;
+                }
+                continue;
+            }
+            if (shutdown_flag && errno == ENOMSG) {
+                break;
+            }
+            report_error("[PRZEWODNIK-RAPORTER] Błąd msgrcv (notice)");
+            break;
+        }
+
+        struct msg_buffer exit_msg;
+        exit_msg.msg_type = MSG_TYPE_EXIT;
+        exit_msg.tourist_id = notice.tourist_id;
+        exit_msg.age = notice.age;
+        exit_msg.is_vip = notice.is_vip;
+        strcpy(exit_msg.info, notice.info);
+
+        if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
+            report_error("[PRZEWODNIK-RAPORTER] Błąd msgsnd (wyjście)");
+        }
+    }
+
+    return 0;
+}
+
 void send_emergency_exit(struct GroupState *group, int guide_id) {
     printf(CLR_RED "\n[PRZEWODNIK %d] Sytuacja awaryjna! Wysyłam SIGUSR2 do grupy!" CLR_RESET "\n", guide_id);
 
@@ -44,6 +91,24 @@ void send_tower_evacuation(struct GroupState *group, struct ParkSharedMemory *pa
             if (kill(pid, SIGUSR1) == -1) {
                 report_error("[PRZEWODNIK] Błąd kill SIGUSR1");
             }
+        }
+    }
+}
+
+static void send_exit_list_to_cashier(struct GroupState *group, int msg_id) {
+    for (int i = 0; i < group->size; i++) {
+        struct msg_buffer exit_msg;
+        exit_msg.msg_type = MSG_TYPE_EXIT;
+        exit_msg.tourist_id = group->member_ids[i];
+        exit_msg.age = group->member_ages[i];
+        exit_msg.is_vip = group->member_vips[i];
+
+        char timestamp[20];
+        get_timestamp(timestamp, sizeof(timestamp));
+        strcpy(exit_msg.info, timestamp);
+
+        if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
+            report_error("[PRZEWODNIK] Błąd msgsnd (wyjście turysty)");
         }
     }
 }
@@ -228,6 +293,19 @@ int main(int argc, char* argv[]) {
     if (argc < 2) {
         printf(CLR_RED "[PRZEWODNIK] Błąd: Brak ID przewodnika!" CLR_RESET "\n");
         exit(1);
+    }
+
+    if (strcmp(argv[1], "reporter") == 0) {
+        struct sigaction sa_term;
+        sa_term.sa_handler = sigterm_handler;
+        sigemptyset(&sa_term.sa_mask);
+        sa_term.sa_flags = 0;
+
+        if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
+            fatal_error("[PRZEWODNIK-RAPORTER] Błąd sigaction SIGTERM");
+        }
+
+        return run_exit_reporter();
     }
 
     int id = atoi(argv[1]);
@@ -571,6 +649,8 @@ int main(int argc, char* argv[]) {
 
         printf(CLR_GREEN "\n[PRZEWODNIK %d] Koniec wycieczki!" CLR_RESET "\n", id);
         printf(CLR_GREEN "[PRZEWODNIK %d] Odprowadzam grupę do kasy." CLR_RESET "\n", id);
+
+        send_exit_list_to_cashier(group, msg_id);
 
         if (!emergency_before_start) {
             int fifo_fd = open(FIFO_PATH, O_WRONLY);

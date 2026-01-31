@@ -296,13 +296,13 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
         if (g_my_caretaker_id >= 0) {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką turysty %d" CLR_RESET "\n", id, age, g_my_caretaker_id);
         } else if (g_has_guide_caretaker) {
-            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - opiekunem jest przewodnik (nie wchodzi na wieżę)." CLR_RESET "\n", id, age);
+            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - opiekunem jest przewodnik, który nie wchodzi na wieżę." CLR_RESET "\n", id, age);
         } else {
-            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką dorosłego" CLR_RESET "\n", id, age);
+            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - potrzebuję dorosłego opiekuna na wieżę." CLR_RESET "\n", id, age);
         }
     }
 
-    if (age < 15 && g_my_caretaker_id < 0 && !g_has_guide_caretaker) {
+    if (age < 15 && g_my_caretaker_id < 0) {
         printf(CLR_RED "[TURYSTA %d] Brak dorosłego opiekuna na wieżę - nie wchodzę." CLR_RESET "\n", id);
         return;
     }
@@ -542,13 +542,15 @@ int main(int argc, char* argv[]) {
 
     int is_vip = (rand() % 100) < 5; 
     int vip_can_go_solo = (is_vip && age >= 15);
+    int should_send_exit_notice = 1;
     int entry_msg_sent = 0;
 
     int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
     int sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
     int msg_id = msgget(MSG_KEY_ID, 0600);
+    int report_msg_id = msgget(MSG_REPORT_KEY_ID, 0600);
 
-    if (shm_id == -1 || sem_id == -1 || msg_id == -1) {
+    if (shm_id == -1 || sem_id == -1 || msg_id == -1 || report_msg_id == -1) {
         fatal_error("[TURYSTA] Nie mogę znaleźć zasobów IPC");
     }
 
@@ -691,6 +693,7 @@ int main(int argc, char* argv[]) {
         printf(CLR_RED "[TURYSTA %d] Błąd: nieprawidłowy group_id=%d!" CLR_RESET "\n", id, my_group_id);
         goto cleanup;
     }
+    should_send_exit_notice = 0;
 
     if (emergency_exit_flag) {
         printf(CLR_RED "[TURYSTA %d] Ewakuacja - ale muszę dokończyć protokół grupy!" CLR_RESET "\n", id);
@@ -775,18 +778,20 @@ cleanup:
 
     printf(CLR_GREEN "[TURYSTA %d] Wychodzę z parku." CLR_RESET "\n", id);
 
-    struct msg_buffer exit_msg;
-    exit_msg.msg_type = MSG_TYPE_EXIT;
-    exit_msg.tourist_id = id;
-    exit_msg.age = age;
-    exit_msg.is_vip = is_vip;
+    if (should_send_exit_notice) {
+        struct msg_buffer notice_msg;
+        notice_msg.msg_type = MSG_TYPE_EXIT_NOTICE;
+        notice_msg.tourist_id = id;
+        notice_msg.age = age;
+        notice_msg.is_vip = is_vip;
 
-    char timestamp[20];
-    get_timestamp(timestamp, sizeof(timestamp));
-    strcpy(exit_msg.info, timestamp);
+        char timestamp[20];
+        get_timestamp(timestamp, sizeof(timestamp));
+        strcpy(notice_msg.info, timestamp);
 
-    if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
-        report_error("[TURYSTA] Błąd msgsnd (wyjście)");
+        if (msgsnd(report_msg_id, &notice_msg, sizeof(notice_msg) - sizeof(long), 0) == -1) {
+            report_error("[TURYSTA] Błąd msgsnd (notice wyjścia)");
+        }
     }
 
     sem_lock(sem_id, SEM_STATS_MUTEX);
