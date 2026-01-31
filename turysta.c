@@ -11,6 +11,7 @@ struct ParkSharedMemory *g_park = NULL;
 int g_is_caretaker = 0;
 int g_caretaker_child_age = -1;
 int g_my_caretaker_id = -1;
+int g_has_guide_caretaker = 0;
 
 int g_member_index = -1;
 int g_has_queue_slot = 0;
@@ -70,9 +71,16 @@ void do_bridge(int id, int age, int is_vip, int direction, struct ParkSharedMemo
     if (age < 15) {
         if (g_my_caretaker_id >= 0) {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - idę przez most pod opieką turysty %d" CLR_RESET "\n", id, age, g_my_caretaker_id);
+        } else if (g_has_guide_caretaker) {
+            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - idę przez most pod opieką przewodnika" CLR_RESET "\n", id, age);
         } else {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - idę przez most pod opieką dorosłego" CLR_RESET "\n", id, age);
         }
+    }
+
+    if (age < 15 && g_my_caretaker_id < 0 && !g_has_guide_caretaker) {
+        printf(CLR_RED "[TURYSTA %d] Brak opiekuna - nie wchodzę na most." CLR_RESET "\n", id);
+        return;
     }
 
     if (emergency_exit_flag) {
@@ -214,9 +222,16 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
     if (age < 15) {
         if (g_my_caretaker_id >= 0) {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką turysty %d" CLR_RESET "\n", id, age, g_my_caretaker_id);
+        } else if (g_has_guide_caretaker) {
+            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - opiekunem jest przewodnik (nie wchodzi na wieżę)." CLR_RESET "\n", id, age);
         } else {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wchodzę na wieżę pod opieką dorosłego" CLR_RESET "\n", id, age);
         }
+    }
+
+    if (age < 15 && g_my_caretaker_id < 0 && !g_has_guide_caretaker) {
+        printf(CLR_RED "[TURYSTA %d] Brak dorosłego opiekuna na wieżę - nie wchodzę." CLR_RESET "\n", id);
+        return;
     }
 
     if (emergency_exit_flag) {
@@ -310,9 +325,16 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
     if (age < 15) {
         if (g_my_caretaker_id >= 0) {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką turysty %d" CLR_RESET "\n", id, age, g_my_caretaker_id);
+        } else if (g_has_guide_caretaker) {
+            printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką przewodnika" CLR_RESET "\n", id, age);
         } else {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką dorosłego" CLR_RESET "\n", id, age);
         }
+    }
+
+    if (age < 15 && g_my_caretaker_id < 0 && !g_has_guide_caretaker) {
+        printf(CLR_RED "[TURYSTA %d] Brak opiekuna - nie wchodzę na prom." CLR_RESET "\n", id);
+        return;
     }
 
     if (is_vip) {
@@ -449,7 +471,7 @@ int main(int argc, char* argv[]) {
 
     int age = (rand() % 68) + 3; 
 
-    int is_vip = (rand() % 100) < 10; 
+    int is_vip = (rand() % 100) < 5; 
     int vip_can_go_solo = (is_vip && age >= 15);
     int entry_msg_sent = 0;
 
@@ -549,12 +571,6 @@ int main(int argc, char* argv[]) {
 
     g_has_queue_slot = 1;
 
-    if (!entry_msg_sent) {
-        enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
-        entry_msg_sent = 1;
-        printf(CLR_GREEN "[TURYSTA %d] Wszedłem do parku! Idę do punktu zbiórki." CLR_RESET "\n", id);
-    }
-
     sem_lock(sem_id, SEM_QUEUE_MUTEX);
 
     int my_position = park->people_in_queue;
@@ -577,6 +593,7 @@ int main(int argc, char* argv[]) {
     if (!entry_msg_sent) {
         enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
         entry_msg_sent = 1;
+        printf(CLR_GREEN "[TURYSTA %d] Wszedłem do parku! Idę do punktu zbiórki." CLR_RESET "\n", id);
     }
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przewodnika. (Kolejka: %d/%d)" CLR_RESET "\n", id, current_count, M_GROUP_SIZE);
@@ -632,6 +649,9 @@ int main(int argc, char* argv[]) {
             int caretaker_idx = my_group->member_has_caretaker[i];
             if (caretaker_idx >= 0) {
                 g_my_caretaker_id = my_group->member_ids[caretaker_idx];
+            } else if (my_group->member_caretaker_is_guide[i]) {
+                g_has_guide_caretaker = 1;
+                g_my_caretaker_id = -1;
             }
             break;
         }

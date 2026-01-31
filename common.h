@@ -141,6 +141,7 @@ struct GroupState {
     int member_is_caretaker[M_GROUP_SIZE];
     int member_caretaker_of[M_GROUP_SIZE];  
     int member_has_caretaker[M_GROUP_SIZE];
+    int member_caretaker_is_guide[M_GROUP_SIZE];
 
     int signal_tower_evacuate;
     int signal_emergency_exit;

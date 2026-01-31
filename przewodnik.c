@@ -328,6 +328,7 @@ int main(int argc, char* argv[]) {
             group->member_is_caretaker[i] = 0;
             group->member_caretaker_of[i] = -1;
             group->member_has_caretaker[i] = -1;
+            group->member_caretaker_is_guide[i] = 0;
             if (i >= actual_group_size) {
                 group->member_pids[i] = 0;
                 group->member_ids[i] = 0;
@@ -363,6 +364,14 @@ int main(int argc, char* argv[]) {
                         break;
                     }
                 }
+            }
+        }
+
+        for (int i = 0; i < actual_group_size; i++) {
+            if (group->member_ages[i] < 15 && group->member_has_caretaker[i] == -1) {
+                group->member_caretaker_is_guide[i] = 1;
+                printf(CLR_YELLOW "[PRZEWODNIK %d] Brak dorosłego opiekuna dla turysty %d (wiek %d) - przejmuję opiekę jako przewodnik." CLR_RESET "\n",
+                       id, group->member_ids[i], group->member_ages[i]);
             }
         }
 
