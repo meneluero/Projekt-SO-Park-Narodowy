@@ -18,7 +18,9 @@ void cleanup() {
     cleanup_done = 1;
 
     if (dummy_fifo_fd != -1) {
-        close(dummy_fifo_fd);
+        if (close(dummy_fifo_fd) == -1) {
+            report_error("[MAIN] Błąd close dummy FIFO");
+        }
     }
 
     printf("\n" CLR_WHITE "[MAIN] Rozpoczęto sprzątanie zasobów..." CLR_RESET "\n");
@@ -35,7 +37,9 @@ void cleanup() {
     sa.sa_flags = 0;
     sigaction(SIGTERM, &sa, NULL);
 
-    kill(0, SIGTERM);
+    if (kill(0, SIGTERM) == -1) {
+        report_error("[MAIN] Błąd kill(SIGTERM) dla grupy procesów");
+    }
 
     while (waitpid(-1, NULL, 0) > 0 || errno == EINTR);
 
@@ -313,8 +317,11 @@ void cleanup_old_ipc() {
         old_sem_id = semget(SEM_KEY_ID, 11, 0600);
     }
     if (old_sem_id != -1) {
-        semctl(old_sem_id, 0, IPC_RMID);
-        printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto stare semafory." CLR_RESET "\n");
+        if (semctl(old_sem_id, 0, IPC_RMID) == -1) {
+            report_error("[MAIN-INIT] Błąd semctl IPC_RMID (stare semafory)");
+        } else {
+            printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto stare semafory." CLR_RESET "\n");
+        }
     }
 
     unlink(FIFO_PATH);
@@ -366,7 +373,7 @@ int main() {
     }
     printf(CLR_WHITE "[MAIN] Kolejka komunikatów utworzona (ID: %d)." CLR_RESET "\n", msg_id);
 
-    if (mkfifo(FIFO_PATH, 0660) == -1) {
+    if (mkfifo(FIFO_PATH, 0600) == -1) {
         fatal_error("[MAIN] Błąd mkfifo");
     }
     printf(CLR_WHITE "[MAIN] FIFO utworzone (%s)." CLR_RESET "\n", FIFO_PATH);
@@ -469,7 +476,9 @@ int main() {
 
     printf("\n" CLR_WHITE "[MAIN] Wszyscy turyści zakończyli procesy. Wysyłam sygnał do kasjera..." CLR_RESET "\n");
 
-    kill(kasjer_pid, SIGTERM);
+    if (kill(kasjer_pid, SIGTERM) == -1) {
+        report_error("[MAIN] Błąd kill(SIGTERM) kasjer");
+    }
 
     printf(CLR_WHITE "[MAIN] Czekam na zakończenie kasjera (przetwarzanie ostatnich wiadomości)..." CLR_RESET "\n");
     waitpid(kasjer_pid, NULL, 0);
@@ -482,6 +491,10 @@ int main() {
     printf(CLR_WHITE "Weszło do parku:         %d" CLR_RESET "\n", park->total_entered);
     printf(CLR_WHITE "Wyszło z parku:          %d" CLR_RESET "\n", park->total_exited);
     printf(CLR_WHITE "Różnica (w parku):       %d" CLR_RESET "\n", park->total_entered - park->total_exited);
+    printf(CLR_WHITE "Bilety płatne:           %d" CLR_RESET "\n", park->paid_entries);
+    printf(CLR_WHITE "Wejścia darmowe VIP:     %d" CLR_RESET "\n", park->free_entries_vip);
+    printf(CLR_WHITE "Wejścia darmowe dzieci:  %d" CLR_RESET "\n", park->free_entries_children);
+    printf(CLR_WHITE "Przychód (PLN):          %d" CLR_RESET "\n", park->total_revenue);
     printf(CLR_BOLD CLR_WHITE "----------------------------------------------" CLR_RESET "\n");
 
     if (park->total_entered == num_tourists && park->total_exited == num_tourists) {

@@ -15,18 +15,50 @@ int g_my_caretaker_id = -1;
 int g_member_index = -1;
 int g_has_queue_slot = 0;
 
+static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int msg_id, struct ParkSharedMemory *park) {
+    sem_lock(sem_id, SEM_PARK_LIMIT);
+
+    sem_lock(sem_id, SEM_STATS_MUTEX);
+    park->people_in_park++;
+    if (is_vip) {
+        park->vip_in_park++;
+        park->free_entries_vip++;
+    } else if (age < 7) {
+        park->free_entries_children++;
+    } else {
+        park->paid_entries++;
+        park->total_revenue += TICKET_PRICE;
+    }
+    sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+    struct msg_buffer entry_msg;
+    entry_msg.msg_type = MSG_TYPE_ENTRY;
+    entry_msg.tourist_id = id;
+    entry_msg.age = age;
+    entry_msg.is_vip = is_vip;
+    strcpy(entry_msg.info, "wejście do parku");
+
+    if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
+        fatal_error("[TURYSTA] Błąd msgsnd (wejście)");
+    }
+}
+
 void sigusr1_handler(int sig) {
     tower_evacuation_flag = 1;
     char msg[100];
     int len = sprintf(msg, "\n\033[1;31m[TURYSTA %d] SIGUSR1: Ewakuacja z wieży!\033[0m\n", g_id);
-    write(STDOUT_FILENO, msg, len);
+    if (write(STDOUT_FILENO, msg, len) == -1) {
+        report_error("[TURYSTA] Błąd write w handlerze SIGUSR1");
+    }
 }
 
 void sigusr2_handler(int sig) {
     emergency_exit_flag = 1;
     char msg[100];
     int len = sprintf(msg, "\n\033[1;31m[TURYSTA %d] SIGUSR2: Alarm! Natychmiastowy powrót do kasy!\033[0m\n", g_id);
-    write(STDOUT_FILENO, msg, len);
+    if (write(STDOUT_FILENO, msg, len) == -1) {
+        report_error("[TURYSTA] Błąd write w handlerze SIGUSR2");
+    }
 }
 
 void do_bridge(int id, int age, int is_vip, int direction, struct ParkSharedMemory *park, int sem_id) {
@@ -445,31 +477,11 @@ int main(int argc, char* argv[]) {
         printf(CLR_CYAN "[TURYSTA %d] Przychodzę do parku (wiek: %d)." CLR_RESET "\n", id, age);
     }
 
-    sem_lock(sem_id, SEM_PARK_LIMIT);
-
-    sem_lock(sem_id, SEM_STATS_MUTEX);
-    park->people_in_park++;
-    if (is_vip) {
-        park->vip_in_park++;
-    }
-    sem_unlock(sem_id, SEM_STATS_MUTEX);
-
-    printf(CLR_GREEN "[TURYSTA %d] Wszedłem do parku! Idę do punktu zbiórki." CLR_RESET "\n", id);
-
     if (vip_can_go_solo) {
+        printf(CLR_MAGENTA "[TURYSTA %d] VIP: wejście bezpłatne, pomijam kasę." CLR_RESET "\n", id);
+        enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
+        printf(CLR_GREEN "[TURYSTA %d] Wszedłem do parku! Idę do punktu zbiórki." CLR_RESET "\n", id);
         printf(CLR_MAGENTA "[TURYSTA %d] VIP: omijam kolejkę do kasy i zwiedzam samodzielnie." CLR_RESET "\n", id);
-
-        struct msg_buffer entry_msg;
-        entry_msg.msg_type = MSG_TYPE_ENTRY;
-        entry_msg.tourist_id = id;
-        entry_msg.age = age;
-        entry_msg.is_vip = is_vip;
-        strcpy(entry_msg.info, "wejście do parku");
-
-        if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
-            fatal_error("[TURYSTA] Błąd msgsnd (wejście VIP)");
-        }
-        entry_msg_sent = 1;
 
         int route = (rand() % 2) + 1;
         printf(CLR_MAGENTA "[TURYSTA %d] VIP: startuję trasę %d solo." CLR_RESET "\n", id, route);
@@ -500,18 +512,7 @@ int main(int argc, char* argv[]) {
 
     if (is_vip && age < 15) {
         printf(CLR_MAGENTA "[TURYSTA %d] VIP-dziecko: omijam kasę, ale muszę iść z grupą (potrzebuję opiekuna)." CLR_RESET "\n", id);
-
-        struct msg_buffer entry_msg;
-        entry_msg.msg_type = MSG_TYPE_ENTRY;
-        entry_msg.tourist_id = id;
-        entry_msg.age = age;
-        entry_msg.is_vip = is_vip;
-        strcpy(entry_msg.info, "wejście do parku");
-
-        if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
-            fatal_error("[TURYSTA] Błąd msgsnd (wejście VIP-dziecko)");
-        }
-        entry_msg_sent = 1;
+        printf(CLR_MAGENTA "[TURYSTA %d] VIP-dziecko: wejście bezpłatne." CLR_RESET "\n", id);
     }
 
     if (!is_vip) {
@@ -526,18 +527,6 @@ int main(int argc, char* argv[]) {
 
         printf(CLR_CYAN "[TURYSTA %d] Ustawiam się w kolejce do kasy." CLR_RESET "\n", id);
 
-        struct msg_buffer entry_msg;
-        entry_msg.msg_type = MSG_TYPE_ENTRY;
-        entry_msg.tourist_id = id;
-        entry_msg.age = age;
-        entry_msg.is_vip = is_vip;
-        strcpy(entry_msg.info, "wejście do parku");
-
-        if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
-            fatal_error("[TURYSTA] Błąd msgsnd (wejście)");
-        }
-        entry_msg_sent = 1;
-
         sem_lock(sem_id, SEM_CASH_QUEUE_MUTEX);
         if (park->cash_queue_count > 0) {
             park->cash_queue_count--;
@@ -545,6 +534,12 @@ int main(int argc, char* argv[]) {
         sem_unlock(sem_id, SEM_CASH_QUEUE_MUTEX);
 
         sem_unlock(sem_id, SEM_CASH_QUEUE_SLOTS);
+
+        if (age < 7) {
+            printf(CLR_YELLOW "[TURYSTA %d] Dziecko <7 - bilet bezpłatny." CLR_RESET "\n", id);
+        } else {
+            printf(CLR_CYAN "[TURYSTA %d] Płacę za bilet: %d PLN." CLR_RESET "\n", id, TICKET_PRICE);
+        }
     }
 
     if (sem_lock_interruptible(sem_id, SEM_QUEUE_SLOTS, &emergency_exit_flag) == -1) {
@@ -553,6 +548,12 @@ int main(int argc, char* argv[]) {
     }
 
     g_has_queue_slot = 1;
+
+    if (!entry_msg_sent) {
+        enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
+        entry_msg_sent = 1;
+        printf(CLR_GREEN "[TURYSTA %d] Wszedłem do parku! Idę do punktu zbiórki." CLR_RESET "\n", id);
+    }
 
     sem_lock(sem_id, SEM_QUEUE_MUTEX);
 
@@ -574,16 +575,8 @@ int main(int argc, char* argv[]) {
     }
 
     if (!entry_msg_sent) {
-        struct msg_buffer entry_msg;
-        entry_msg.msg_type = MSG_TYPE_ENTRY;
-        entry_msg.tourist_id = id;
-        entry_msg.age = age;
-        entry_msg.is_vip = is_vip;
-        strcpy(entry_msg.info, "wejście do parku");
-
-        if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
-            fatal_error("[TURYSTA] Błąd msgsnd (wejście)");
-        }
+        enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
+        entry_msg_sent = 1;
     }
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przewodnika. (Kolejka: %d/%d)" CLR_RESET "\n", id, current_count, M_GROUP_SIZE);

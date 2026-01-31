@@ -107,6 +107,7 @@
 #define SEM_KEY_ID 5678
 #define MSG_KEY_ID 9012
 #define FIFO_PATH "/tmp/park_reports.fifo"
+#define TICKET_PRICE 50
 
 #define MSG_TYPE_ENTRY 1
 #define MSG_TYPE_EXIT 2
@@ -150,6 +151,10 @@ struct ParkSharedMemory {
     int total_entered;
     int total_exited;
     int total_expected;
+    int total_revenue;
+    int paid_entries;
+    int free_entries_vip;
+    int free_entries_children;
     int people_in_park;
     int vip_in_park;
 

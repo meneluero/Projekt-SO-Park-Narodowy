@@ -13,7 +13,9 @@ void sigterm_handler(int sig) {
 
     shutdown_flag = 1;
     char msg[] = "\n" CLR_RED "[KASJER] Otrzymano SIGTERM. Kończę pracę." CLR_RESET "\n";
-    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    if (write(STDOUT_FILENO, msg, sizeof(msg) - 1) == -1) {
+        report_error("[KASJER] Błąd write w handlerze SIGTERM");
+    }
 }
 
 void write_log(char *buffer) {
@@ -103,8 +105,14 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        if (bytes == -1 && errno != EINTR) {
+            report_error("[KASJER-FIFO] Błąd read FIFO");
+        }
+
         printf(CLR_YELLOW "[KASJER-FIFO %d] Zamykam wątek FIFO." CLR_RESET "\n", id);
-        close(fifo_fd);
+        if (close(fifo_fd) == -1) {
+            report_error("[KASJER-FIFO] Błąd close FIFO");
+        }
         exit(0);
 
     } else {
@@ -152,7 +160,9 @@ int main(int argc, char* argv[]) {
 
                     if (in_queue > 0) {
                         printf(CLR_YELLOW "[KASJER %d] Wszyscy turyści weszli! Budzę przewodnika dla niepełnej grupy (%d osób)." CLR_RESET "\n", id, in_queue);
-                        sem_unlock(sem_id, SEM_PRZEWODNIK);
+                        if (sem_getval(sem_id, SEM_PRZEWODNIK) == 0) {
+                            sem_unlock(sem_id, SEM_PRZEWODNIK);
+                        }
                     }
                 }
 
@@ -173,14 +183,18 @@ int main(int argc, char* argv[]) {
                     sem_unlock(sem_id, SEM_QUEUE_MUTEX);
                     if (in_q > 0) {
                         printf(CLR_YELLOW "[KASJER %d] Nadal %d osób w kolejce - ponawiam sygnał do przewodnika." CLR_RESET "\n", id, in_q);
-                        sem_unlock(sem_id, SEM_PRZEWODNIK);
+                        if (sem_getval(sem_id, SEM_PRZEWODNIK) == 0) {
+                            sem_unlock(sem_id, SEM_PRZEWODNIK);
+                        }
                     }
                 }
             }
         }
 
         printf(CLR_YELLOW "[KASJER %d] Zamykam kasę. Wysyłam sygnał do wątku FIFO..." CLR_RESET "\n", id);
-        kill(fifo_pid, SIGTERM);
+        if (kill(fifo_pid, SIGTERM) == -1) {
+            report_error("[KASJER] Błąd kill(SIGTERM) FIFO");
+        }
 
         printf(CLR_YELLOW "[KASJER %d] Czekam na zakończenie wątku FIFO..." CLR_RESET "\n", id);
         waitpid(fifo_pid, NULL, 0);
@@ -188,7 +202,9 @@ int main(int argc, char* argv[]) {
         printf(CLR_YELLOW "[KASJER %d] Zakończono pracę." CLR_RESET "\n", id);
     }
 
-    close(log_fd);
+    if (close(log_fd) == -1) {
+        report_error("[KASJER] Błąd close log");
+    }
     shmdt(park);
 
     return 0;

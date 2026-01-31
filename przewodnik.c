@@ -9,7 +9,9 @@ void sigterm_handler(int sig) {
 
     shutdown_flag = 1;
     char msg[] = "\n\033[1;31m[PRZEWODNIK] Otrzymano SIGTERM. Kończę pracę.\033[0m\n";
-    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    if (write(STDOUT_FILENO, msg, sizeof(msg) - 1) == -1) {
+        report_error("[PRZEWODNIK] Błąd write w handlerze SIGTERM");
+    }
 }
 
 void send_emergency_exit(struct GroupState *group, int guide_id) {
@@ -20,7 +22,9 @@ void send_emergency_exit(struct GroupState *group, int guide_id) {
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         if (group->member_pids[i] > 0) {
             printf(CLR_RED "[PRZEWODNIK %d] SIGUSR2 -> Turysta PID=%d" CLR_RESET "\n", guide_id, group->member_pids[i]);
-            kill(group->member_pids[i], SIGUSR2);
+            if (kill(group->member_pids[i], SIGUSR2) == -1) {
+                report_error("[PRZEWODNIK] Błąd kill SIGUSR2");
+            }
         }
     }
     
@@ -37,7 +41,9 @@ void send_tower_evacuation(struct GroupState *group, struct ParkSharedMemory *pa
         if (pid > 0) {
             int on_tower = tower_has_visitor(park, pid);
             printf(CLR_RED "[PRZEWODNIK %d] SIGUSR1 -> Turysta PID=%d (%s)" CLR_RESET "\n", guide_id, pid, on_tower ? "na wieży" : "czeka");
-            kill(pid, SIGUSR1);
+            if (kill(pid, SIGUSR1) == -1) {
+                report_error("[PRZEWODNIK] Błąd kill SIGUSR1");
+            }
         }
     }
 }
@@ -366,8 +372,12 @@ int main(int argc, char* argv[]) {
             union semun reset_arg;
             reset_arg.val = 0;
             for (int i = 0; i < actual_group_size; i++) {
-                semctl(sem_id, SEM_TOURIST_ASSIGNED(i), SETVAL, reset_arg);
-                semctl(sem_id, SEM_TOURIST_READ_DONE(i), SETVAL, reset_arg);
+                if (semctl(sem_id, SEM_TOURIST_ASSIGNED(i), SETVAL, reset_arg) == -1) {
+                    report_error("[PRZEWODNIK] Błąd semctl SEM_TOURIST_ASSIGNED");
+                }
+                if (semctl(sem_id, SEM_TOURIST_READ_DONE(i), SETVAL, reset_arg) == -1) {
+                    report_error("[PRZEWODNIK] Błąd semctl SEM_TOURIST_READ_DONE");
+                }
             }
         }
 
@@ -396,9 +406,13 @@ int main(int argc, char* argv[]) {
         group->size = actual_group_size;
         union semun arg;
         arg.val = 0;
-        semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, arg);
+        if (semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, arg) == -1) {
+            report_error("[PRZEWODNIK] Błąd semctl SEM_GROUP_DONE");
+        }
         for (int k = 0; k < M_GROUP_SIZE; k++) {
-            semctl(sem_id, SEM_MEMBER_GO(group_slot, k), SETVAL, arg);
+            if (semctl(sem_id, SEM_MEMBER_GO(group_slot, k), SETVAL, arg) == -1) {
+                report_error("[PRZEWODNIK] Błąd semctl SEM_MEMBER_GO");
+            }
         }
         group->route = (rand() % 2) + 1; 
 
@@ -447,8 +461,12 @@ int main(int argc, char* argv[]) {
             } else {
                 char report[256];
                 sprintf(report, "Przewodnik %d - awaria przed startem\n", id);
-                write(fifo_fd, report, strlen(report));
-                close(fifo_fd);
+                if (write(fifo_fd, report, strlen(report)) == -1) {
+                    report_error("[PRZEWODNIK] Błąd write FIFO (awaria)");
+                }
+                if (close(fifo_fd) == -1) {
+                    report_error("[PRZEWODNIK] Błąd close FIFO (awaria)");
+                }
             }
 
             printf(CLR_RED "[PRZEWODNIK %d] Czekam na turystów w trybie ewakuacji..." CLR_RESET "\n", id);
@@ -514,7 +532,9 @@ int main(int argc, char* argv[]) {
             if (step < 2) {
                 union semun reset_arg;
                 reset_arg.val = 0;
-                semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, reset_arg);
+                if (semctl(sem_id, SEM_GROUP_DONE(group_slot), SETVAL, reset_arg) == -1) {
+                    report_error("[PRZEWODNIK] Błąd semctl reset SEM_GROUP_DONE");
+                }
 
                 printf(CLR_GREEN "[PRZEWODNIK %d] Przechodzimy do następnej atrakcji." CLR_RESET "\n", id);
 
@@ -545,7 +565,9 @@ int main(int argc, char* argv[]) {
                 if (write(fifo_fd, report, strlen(report)) == -1) {
                     report_error("[PRZEWODNIK] Błąd write FIFO");
                 }
-                close(fifo_fd);
+                if (close(fifo_fd) == -1) {
+                    report_error("[PRZEWODNIK] Błąd close FIFO");
+                }
             }
         }
 
