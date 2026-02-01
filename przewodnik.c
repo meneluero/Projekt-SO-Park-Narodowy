@@ -423,13 +423,14 @@ int main(int argc, char* argv[]) {
         }
 
         for (int i = 0; i < actual_group_size; i++) {
-            group->member_pids[i] = park->queue_pids[i];
-            group->member_ids[i] = park->queue_ids[i];
-            group->member_ages[i] = park->queue_ages[i];
-            group->member_vips[i] = park->queue_vips[i];
+            int idx = (park->queue_head + i) % N_PARK_CAPACITY;
+            group->member_pids[i] = park->queue_pids[idx];
+            group->member_ids[i] = park->queue_ids[idx];
+            group->member_ages[i] = park->queue_ages[idx];
+            group->member_vips[i] = park->queue_vips[idx];
 
-            park->assigned_group_id[i] = group_slot;
-            park->assigned_member_index[i] = i;
+            park->assigned_group_id[idx] = group_slot;
+            park->assigned_member_index[idx] = i;
         }
 
         for (int i = 0; i < actual_group_size; i++) {
@@ -466,26 +467,30 @@ int main(int argc, char* argv[]) {
             union semun reset_arg;
             reset_arg.val = 0;
             for (int i = 0; i < actual_group_size; i++) {
-                if (semctl(sem_id, SEM_TOURIST_ASSIGNED(i), SETVAL, reset_arg) == -1) {
+                int idx = (park->queue_head + i) % N_PARK_CAPACITY;
+                if (semctl(sem_id, SEM_TOURIST_ASSIGNED(idx), SETVAL, reset_arg) == -1) {
                     report_error("[PRZEWODNIK] Błąd semctl SEM_TOURIST_ASSIGNED");
                 }
-                if (semctl(sem_id, SEM_TOURIST_READ_DONE(i), SETVAL, reset_arg) == -1) {
+                if (semctl(sem_id, SEM_TOURIST_READ_DONE(idx), SETVAL, reset_arg) == -1) {
                     report_error("[PRZEWODNIK] Błąd semctl SEM_TOURIST_READ_DONE");
                 }
             }
         }
 
         for (int i = 0; i < actual_group_size; i++) {
-            sem_unlock(sem_id, SEM_TOURIST_ASSIGNED(i));
+            int idx = (park->queue_head + i) % N_PARK_CAPACITY;
+            sem_unlock(sem_id, SEM_TOURIST_ASSIGNED(idx));
         }
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Czekam na potwierdzenie odczytu od turystów..." CLR_RESET "\n", id);
         for (int i = 0; i < actual_group_size; i++) {
-            sem_lock(sem_id, SEM_TOURIST_READ_DONE(i));
+            int idx = (park->queue_head + i) % N_PARK_CAPACITY;
+            sem_lock(sem_id, SEM_TOURIST_READ_DONE(idx));
         }
 
         sem_lock(sem_id, SEM_QUEUE_MUTEX);
-        park->people_in_queue = 0;
+        park->queue_head = (park->queue_head + actual_group_size) % N_PARK_CAPACITY;
+        park->people_in_queue -= actual_group_size;
         sem_unlock(sem_id, SEM_QUEUE_MUTEX);
 
         for(int i=0; i<actual_group_size; i++) {

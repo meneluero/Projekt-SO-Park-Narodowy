@@ -13,6 +13,7 @@ int report_msg_id = -1;
 int cleanup_done = 0; 
 
 int dummy_fifo_fd = -1;
+volatile sig_atomic_t child_reap_in_progress = 0;
 
 void cleanup() {
     if (cleanup_done) return;
@@ -85,6 +86,16 @@ void handle_sigint(int sig) {
     printf("\n" CLR_WHITE "[MAIN] Otrzymano sygnał %d (Ctrl + C). Kończę program." CLR_RESET "\n", sig);
     exit(0); 
 
+}
+
+void handle_sigchld(int sig) {
+    (void)sig;
+    int saved_errno = errno;
+    child_reap_in_progress = 1;
+    while (waitpid(-1, NULL, WNOHANG) > 0) {
+    }
+    child_reap_in_progress = 0;
+    errno = saved_errno;
 }
 
 int get_input(const char* prompt, int min, int max) {
@@ -227,7 +238,7 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_GROUP_MUTEX");
     }
 
-    for (int i = 0; i < M_GROUP_SIZE; i++) {
+    for (int i = 0; i < N_PARK_CAPACITY; i++) {
         arg.val = 0;  
 
         if (semctl(sem_id, SEM_TOURIST_ASSIGNED(i), SETVAL, arg) == -1) {
@@ -235,7 +246,7 @@ void init_semaphores(int sem_id) {
         }
     }
 
-    for (int i = 0; i < M_GROUP_SIZE; i++) {
+    for (int i = 0; i < N_PARK_CAPACITY; i++) {
         arg.val = 0;  
 
         if (semctl(sem_id, SEM_TOURIST_READ_DONE(i), SETVAL, arg) == -1) {
@@ -252,7 +263,7 @@ void init_semaphores(int sem_id) {
         }
     }
 
-    arg.val = M_GROUP_SIZE;
+    arg.val = N_PARK_CAPACITY;
     if (semctl(sem_id, SEM_QUEUE_SLOTS, SETVAL, arg) == -1) {
         fatal_error("[MAIN] Błąd semctl SEM_QUEUE_SLOTS");
     }
@@ -302,6 +313,8 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists) {
     park->bridge_on_bridge = 0;
     park->bridge_waiting[0] = 0;
     park->bridge_waiting[1] = 0;
+    park->queue_head = 0;
+    park->queue_tail = 0;
     park->ferry_position = 0;
     park->ferry_passengers = 0;
     park->ferry_expected = 0;
@@ -342,19 +355,13 @@ void cleanup_old_ipc() {
         printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą kolejkę raportową." CLR_RESET "\n");
     }
 
-    int old_shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
+    int old_shm_id = shmget(SHM_KEY_ID, 1, 0600);
     if (old_shm_id != -1) {
         shmctl(old_shm_id, IPC_RMID, NULL);
         printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą pamięć dzieloną." CLR_RESET "\n");
     }
 
-    int old_sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
-    if (old_sem_id == -1) {
-        old_sem_id = semget(SEM_KEY_ID, 92, 0600);
-    }
-    if (old_sem_id == -1) {
-        old_sem_id = semget(SEM_KEY_ID, 11, 0600);
-    }
+    int old_sem_id = semget(SEM_KEY_ID, 1, 0600);
     if (old_sem_id != -1) {
         if (semctl(old_sem_id, 0, IPC_RMID) == -1) {
             report_error("[MAIN-INIT] Błąd semctl IPC_RMID (stare semafory)");
@@ -377,6 +384,12 @@ int main() {
     sigemptyset(&sa_int.sa_mask);
     sa_int.sa_flags = 0;
     sigaction(SIGINT, &sa_int, NULL);
+
+    struct sigaction sa_chld;
+    sa_chld.sa_handler = handle_sigchld;
+    sigemptyset(&sa_chld.sa_mask);
+    sa_chld.sa_flags = SA_RESTART;
+    sigaction(SIGCHLD, &sa_chld, NULL);
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
     printf(CLR_BOLD CLR_GREEN "SYMULACJA PARKU NARODOWEGO" CLR_RESET "\n");
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
@@ -530,10 +543,30 @@ int main() {
     }
 
     printf("\n" CLR_WHITE "[MAIN] Wygenerowano %d turystów. Czekam na zakończenie zwiedzania..." CLR_RESET "\n", created_tourists);
-    int remaining = created_tourists - finished_tourists;
-    for (int i = 0; i < remaining; i++) {
-        wait(NULL);
+    sigset_t block_mask;
+    sigset_t prev_mask;
+    sigemptyset(&block_mask);
+    sigaddset(&block_mask, SIGCHLD);
+    sigprocmask(SIG_BLOCK, &block_mask, &prev_mask);
+
+    while (1) {
+        sem_lock(sem_id, SEM_STATS_MUTEX);
+        int exited = park->total_exited;
+        int entered = park->total_entered;
+        int expected = park->total_expected;
+        int in_park = park->people_in_park;
+        sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+        if (exited >= expected) {
+            break;
+        }
+        if (entered >= expected && in_park == 0) {
+            break;
+        }
+        sigsuspend(&prev_mask);
     }
+
+    sigprocmask(SIG_SETMASK, &prev_mask, NULL);
 
     printf("\n" CLR_WHITE "[MAIN] Wszyscy turyści zakończyli procesy. Wysyłam sygnał do kasjera..." CLR_RESET "\n");
 
@@ -542,7 +575,9 @@ int main() {
     }
 
     printf(CLR_WHITE "[MAIN] Czekam na zakończenie kasjera (przetwarzanie ostatnich wiadomości)..." CLR_RESET "\n");
-    waitpid(kasjer_pid, NULL, 0);
+    if (waitpid(kasjer_pid, NULL, 0) == -1 && errno != ECHILD) {
+        report_error("[MAIN] Błąd waitpid(kasjer)");
+    }
 
     printf(CLR_WHITE "[MAIN] Kasjer zakończył pracę. Generuję statystyki..." CLR_RESET "\n");
 

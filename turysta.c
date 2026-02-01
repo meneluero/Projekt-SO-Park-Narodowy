@@ -644,11 +644,12 @@ int main(int argc, char* argv[]) {
 
     sem_lock(sem_id, SEM_QUEUE_MUTEX);
 
-    int my_position = park->people_in_queue;
+    int my_position = park->queue_tail;
     park->queue_ages[my_position] = age;
     park->queue_vips[my_position] = is_vip;
     park->queue_pids[my_position] = getpid();
     park->queue_ids[my_position] = id;
+    park->queue_tail = (park->queue_tail + 1) % N_PARK_CAPACITY;
     park->people_in_queue++;
 
     int current_count = park->people_in_queue;
@@ -669,9 +670,11 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przewodnika. (Kolejka: %d/%d)" CLR_RESET "\n", id, current_count, M_GROUP_SIZE);
 
-    if (current_count == M_GROUP_SIZE) {
-        printf(CLR_CYAN "[TURYSTA %d] Komplet! Budzę przewodnika!" CLR_RESET "\n", id);
-        sem_unlock(sem_id, SEM_PRZEWODNIK);
+    if (current_count >= M_GROUP_SIZE) {
+        printf(CLR_CYAN "[TURYSTA %d] Kolejka ma %d osób - budzę przewodnika!" CLR_RESET "\n", id, current_count);
+        if (sem_getval(sem_id, SEM_PRZEWODNIK) == 0) {
+            sem_unlock(sem_id, SEM_PRZEWODNIK);
+        }
     }
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przydzielenie do grupy (pozycja %d)..." CLR_RESET "\n", id, my_position);
