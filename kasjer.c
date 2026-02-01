@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
     }
 
     int id = atoi(argv[1]);
-    int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
+    int shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), 0600);
     if (shm_id == -1) {
         fatal_error("[KASJER] Błąd shmget");
     }
@@ -43,12 +43,12 @@ int main(int argc, char* argv[]) {
         fatal_error("[KASJER] Błąd shmat");
     }
 
-    int sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
+    int sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, 0600);
     if (sem_id == -1) {
         fatal_error("[KASJER] Błąd semget");
     }
 
-    int msg_id = msgget(MSG_KEY_ID, 0600);
+    int msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
     if (msg_id == -1) {
         fatal_error("[KASJER] Błąd msgget");
     }

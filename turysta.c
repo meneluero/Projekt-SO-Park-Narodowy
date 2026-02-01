@@ -3,6 +3,7 @@
 
 volatile sig_atomic_t tower_evacuation_flag = 0;
 volatile sig_atomic_t emergency_exit_flag = 0;
+volatile sig_atomic_t sigterm_flag = 0;
 
 int g_sem_id = -1;
 int g_id = -1;
@@ -15,6 +16,19 @@ int g_has_guide_caretaker = 0;
 
 int g_member_index = -1;
 int g_has_queue_slot = 0;
+
+static int int_to_str(int val, char *buf, int buf_size) {
+    if (buf_size < 2) return 0;
+    int neg = 0, len = 0;
+    char tmp[12];
+    if (val < 0) { neg = 1; val = -val; }
+    do { tmp[len++] = '0' + (val % 10); val /= 10; } while (val > 0 && len < 11);
+    int pos = 0;
+    if (neg && pos < buf_size - 1) buf[pos++] = '-';
+    for (int i = len - 1; i >= 0 && pos < buf_size - 1; i--) buf[pos++] = tmp[i];
+    buf[pos] = '\0';
+    return pos;
+}
 
 static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int msg_id, struct ParkSharedMemory *park) {
     sem_lock(sem_id, SEM_PARK_LIMIT);
@@ -44,22 +58,45 @@ static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int m
     }
 }
 
+void sigterm_handler(int sig) {
+    (void)sig;
+    sigterm_flag = 1;
+    emergency_exit_flag = 1;
+    signal(SIGTERM, SIG_DFL);
+    char msg[128];
+    int pos = 0;
+    const char p1[] = "\n\033[1;31m[TURYSTA ";
+    const char p2[] = "] SIGTERM: Kończę pracę.\033[0m\n";
+    for (int i = 0; p1[i]; i++) msg[pos++] = p1[i];
+    pos += int_to_str(g_id, msg + pos, sizeof(msg) - pos);
+    for (int i = 0; p2[i]; i++) msg[pos++] = p2[i];
+    write(STDOUT_FILENO, msg, pos);
+}
+
 void sigusr1_handler(int sig) {
+    (void)sig;
     tower_evacuation_flag = 1;
-    char msg[100];
-    int len = sprintf(msg, "\n\033[1;31m[TURYSTA %d] SIGUSR1: Ewakuacja z wieży!\033[0m\n", g_id);
-    if (write(STDOUT_FILENO, msg, len) == -1) {
-        report_error("[TURYSTA] Błąd write w handlerze SIGUSR1");
-    }
+    char msg[128];
+    int pos = 0;
+    const char p1[] = "\n\033[1;31m[TURYSTA ";
+    const char p2[] = "] SIGUSR1: Ewakuacja z wieży!\033[0m\n";
+    for (int i = 0; p1[i]; i++) msg[pos++] = p1[i];
+    pos += int_to_str(g_id, msg + pos, sizeof(msg) - pos);
+    for (int i = 0; p2[i]; i++) msg[pos++] = p2[i];
+    write(STDOUT_FILENO, msg, pos);
 }
 
 void sigusr2_handler(int sig) {
+    (void)sig;
     emergency_exit_flag = 1;
-    char msg[100];
-    int len = sprintf(msg, "\n\033[1;31m[TURYSTA %d] SIGUSR2: Alarm! Natychmiastowy powrót do kasy!\033[0m\n", g_id);
-    if (write(STDOUT_FILENO, msg, len) == -1) {
-        report_error("[TURYSTA] Błąd write w handlerze SIGUSR2");
-    }
+    char msg[128];
+    int pos = 0;
+    const char p1[] = "\n\033[1;31m[TURYSTA ";
+    const char p2[] = "] SIGUSR2: Alarm! Natychmiastowy powrót do kasy!\033[0m\n";
+    for (int i = 0; p1[i]; i++) msg[pos++] = p1[i];
+    pos += int_to_str(g_id, msg + pos, sizeof(msg) - pos);
+    for (int i = 0; p2[i]; i++) msg[pos++] = p2[i];
+    write(STDOUT_FILENO, msg, pos);
 }
 
 static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_vip) {
@@ -242,7 +279,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
     if (entered_bridge) {
         if (!emergency_exit_flag) {
             printf(CLR_CYAN "[TURYSTA %d] Przechodzę przez most..." CLR_RESET "\n", id);
-
+            sim_sleep(BRIDGE_CROSS_TIME_MIN, BRIDGE_CROSS_TIME_MAX, 0);
         } else {
             printf(CLR_RED "[TURYSTA %d] Ewakuacja! Szybko schodzę z mostu." CLR_RESET "\n", id);
         }
@@ -349,7 +386,18 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
 
     tower_evacuation_flag = 0;
 
-    int tower_result = sem_timed_wait(sem_id, SEM_TOWER_WAIT, TOWER_VISIT_TIME, &tower_evacuation_flag, &emergency_exit_flag);
+    int tower_stay_us = TOWER_VISIT_TIME_MIN;
+    if (TOWER_VISIT_TIME_MAX > TOWER_VISIT_TIME_MIN) {
+        tower_stay_us = TOWER_VISIT_TIME_MIN + (rand() % (TOWER_VISIT_TIME_MAX - TOWER_VISIT_TIME_MIN + 1));
+    }
+    int tower_stay_sec = (tower_stay_us > 0) ? (tower_stay_us + 999999) / 1000000 : 0;
+
+    int tower_result;
+    if (tower_stay_sec > 0) {
+        tower_result = sem_timed_wait(sem_id, SEM_TOWER_WAIT, tower_stay_sec, &tower_evacuation_flag, &emergency_exit_flag);
+    } else {
+        tower_result = (tower_evacuation_flag || emergency_exit_flag) ? -1 : 1;
+    }
 
     if (tower_result == -1) {
         if (tower_evacuation_flag) {
@@ -495,6 +543,8 @@ void do_ferry_vip(int id, int age, int route, struct ParkSharedMemory *park, int
     printf(CLR_MAGENTA "[TURYSTA %d] VIP: wsiadam na prom jako jedyny pasażer." CLR_RESET "\n", id);
     printf(CLR_MAGENTA "[TURYSTA %d] VIP: prom płynie na brzeg %d." CLR_RESET "\n", id, destination);
 
+    sim_sleep(FERRY_TRAVEL_TIME_MIN, FERRY_TRAVEL_TIME_MAX, 0);
+
     sem_lock(sem_id, SEM_PROM_MUTEX);
     park->ferry_position = destination;
     park->ferry_passengers = 0;
@@ -536,6 +586,14 @@ int main(int argc, char* argv[]) {
         fatal_error("[TURYSTA] Błąd sigaction SIGUSR2");
     }
 
+    struct sigaction sa_term;
+    sa_term.sa_handler = sigterm_handler;
+    sigemptyset(&sa_term.sa_mask);
+    sa_term.sa_flags = 0;
+    if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
+        fatal_error("[TURYSTA] Błąd sigaction SIGTERM");
+    }
+
     srand(time(NULL) + id);
 
     int age = (rand() % 68) + 3; 
@@ -545,10 +603,10 @@ int main(int argc, char* argv[]) {
     int should_send_exit_notice = 1;
     int entry_msg_sent = 0;
 
-    int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
-    int sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
-    int msg_id = msgget(MSG_KEY_ID, 0600);
-    int report_msg_id = msgget(MSG_REPORT_KEY_ID, 0600);
+    int shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), 0600);
+    int sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, 0600);
+    int msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
+    int report_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_REPORT_ID), 0600);
 
     if (shm_id == -1 || sem_id == -1 || msg_id == -1 || report_msg_id == -1) {
         fatal_error("[TURYSTA] Nie mogę znaleźć zasobów IPC");

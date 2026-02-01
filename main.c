@@ -83,9 +83,10 @@ void cleanup() {
 }
 
 void handle_sigint(int sig) {
-    printf("\n" CLR_WHITE "[MAIN] Otrzymano sygnał %d (Ctrl + C). Kończę program." CLR_RESET "\n", sig);
-    exit(0); 
-
+    (void)sig;
+    const char msg[] = "\n\033[0;37m[MAIN] Otrzymano SIGINT (Ctrl + C). Kończę program.\033[0m\n";
+    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    exit(0);
 }
 
 void handle_sigchld(int sig) {
@@ -324,11 +325,11 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists) {
     park->tower_waiting_vip = 0;
     park->tower_waiting_normal = 0;
 
-    for (int i = 0; i < M_GROUP_SIZE; i++) {
+    for (int i = 0; i < N_PARK_CAPACITY; i++) {
         park->assigned_group_id[i] = -1;
     }
 
-    for (int i = 0; i < M_GROUP_SIZE; i++) {
+    for (int i = 0; i < N_PARK_CAPACITY; i++) {
         park->assigned_member_index[i] = -1;
     }
 
@@ -343,25 +344,25 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists) {
 void cleanup_old_ipc() {
     printf(CLR_WHITE "[MAIN-INIT] Sprawdzanie starych zasobów IPC..." CLR_RESET "\n");
 
-    int old_msg_id = msgget(MSG_KEY_ID, 0600);
+    int old_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
     if (old_msg_id != -1) {
         msgctl(old_msg_id, IPC_RMID, NULL);
         printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą kolejkę komunikatów." CLR_RESET "\n");
     }
 
-    int old_report_id = msgget(MSG_REPORT_KEY_ID, 0600);
+    int old_report_id = msgget(ftok(FTOK_PATH, FTOK_MSG_REPORT_ID), 0600);
     if (old_report_id != -1) {
         msgctl(old_report_id, IPC_RMID, NULL);
         printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą kolejkę raportową." CLR_RESET "\n");
     }
 
-    int old_shm_id = shmget(SHM_KEY_ID, 1, 0600);
+    int old_shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), 1, 0600);
     if (old_shm_id != -1) {
         shmctl(old_shm_id, IPC_RMID, NULL);
         printf(CLR_WHITE "[MAIN-INIT] Wykryto i usunięto starą pamięć dzieloną." CLR_RESET "\n");
     }
 
-    int old_sem_id = semget(SEM_KEY_ID, 1, 0600);
+    int old_sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), 1, 0600);
     if (old_sem_id != -1) {
         if (semctl(old_sem_id, 0, IPC_RMID) == -1) {
             report_error("[MAIN-INIT] Błąd semctl IPC_RMID (stare semafory)");
@@ -404,7 +405,7 @@ int main() {
 
     printf("\n");
 
-    shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), IPC_CREAT | 0600);
+    shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), IPC_CREAT | 0600);
     if (shm_id == -1) {
         fatal_error("[MAIN] Błąd shmget");
     }
@@ -417,7 +418,7 @@ int main() {
 
     init_shared_memory(park, num_tourists);
 
-    sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, IPC_CREAT | 0600);
+    sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, IPC_CREAT | 0600);
     if (sem_id == -1) {
         fatal_error("[MAIN] Błąd semget");
     }
@@ -425,13 +426,13 @@ int main() {
 
     init_semaphores(sem_id);
 
-    msg_id = msgget(MSG_KEY_ID, IPC_CREAT | 0600);
+    msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), IPC_CREAT | 0600);
     if (msg_id == -1) {
         fatal_error("[MAIN] Błąd msgget");
     }
     printf(CLR_WHITE "[MAIN] Kolejka komunikatów utworzona (ID: %d)." CLR_RESET "\n", msg_id);
 
-    report_msg_id = msgget(MSG_REPORT_KEY_ID, IPC_CREAT | 0600);
+    report_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_REPORT_ID), IPC_CREAT | 0600);
     if (report_msg_id == -1) {
         fatal_error("[MAIN] Błąd msgget (report queue)");
     }
@@ -529,6 +530,8 @@ int main() {
         }
 
         created_tourists++;
+
+        //sim_sleep(TOURIST_ARRIVAL_MIN, TOURIST_ARRIVAL_MAX, 0);
 
         if (i % 100 == 0) {
             printf(CLR_WHITE "[MAIN] Wygenerowano %d/%d turystów" CLR_RESET "\n", i, num_tourists);

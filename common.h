@@ -35,11 +35,43 @@
 #define X1_BRIDGE_CAP 9
 #define X2_TOWER_CAP 18 
 #define X3_FERRY_CAP 12 
-#define MAX_GROUPS 25
+#define MAX_GROUPS 15
 
-#define BRIDGE_CROSS_TIME 0
+// #define BRIDGE_CROSS_TIME_MIN 500000 
+// #define BRIDGE_CROSS_TIME_MAX 2000000 
+// #define TOWER_VISIT_TIME_MIN 1000000 
+// #define TOWER_VISIT_TIME_MAX 3000000
+// #define FERRY_TRAVEL_TIME_MIN 1000000
+// #define FERRY_TRAVEL_TIME_MAX 2000000
+// #define WALK_TIME_MIN 200000  
+// #define WALK_TIME_MAX 1000000
+// #define TOURIST_ARRIVAL_MIN 1000 
+// #define TOURIST_ARRIVAL_MAX 50000
+
+#ifndef BRIDGE_CROSS_TIME_MIN
+#define BRIDGE_CROSS_TIME_MIN 0
+#define BRIDGE_CROSS_TIME_MAX 0
+#endif
+#ifndef TOWER_VISIT_TIME_MIN
+#define TOWER_VISIT_TIME_MIN 0
+#define TOWER_VISIT_TIME_MAX 0
+#endif
+#ifndef FERRY_TRAVEL_TIME_MIN
+#define FERRY_TRAVEL_TIME_MIN 0
+#define FERRY_TRAVEL_TIME_MAX 0
+#endif
+#ifndef WALK_TIME_MIN
+#define WALK_TIME_MIN 0
+#define WALK_TIME_MAX 0
+#endif
+#ifndef TOURIST_ARRIVAL_MIN
+#define TOURIST_ARRIVAL_MIN 0
+#define TOURIST_ARRIVAL_MAX 0
+#endif
+
+#define BRIDGE_CROSS_TIME 0 
 #define TOWER_VISIT_TIME 0
-#define FERRY_TRAVEL_TIME 0 
+#define FERRY_TRAVEL_TIME 0
 
 #define PHASE_WAITING 0
 #define PHASE_READY 1
@@ -108,10 +140,11 @@
 #define SEM_MEMBER_GO(group, member) (SEM_MEMBER_GO_BASE + (group) * M_GROUP_SIZE + (member))
 #define SEM_BRIDGE_GUIDE_READY(group) (SEM_BRIDGE_GUIDE_READY_BASE + (group))
 
-#define SHM_KEY_ID 1234
-#define SEM_KEY_ID 5678
-#define MSG_KEY_ID 9012
-#define MSG_REPORT_KEY_ID 9013
+#define FTOK_PATH "./main"
+#define FTOK_SHM_ID 'S'
+#define FTOK_SEM_ID 'E'
+#define FTOK_MSG_ID 'M'
+#define FTOK_MSG_REPORT_ID 'R'
 #define FIFO_PATH "/tmp/park_reports.fifo"
 #define TICKET_PRICE 50
 
@@ -322,6 +355,17 @@ static inline int sem_timed_wait(int sem_id, int sem_num, int seconds,volatile s
             continue;
         }
         fatal_error("Błąd sem_timed_wait");
+    }
+}
+
+static inline void sim_sleep(int min_us, int max_us, int has_young_children) {
+    if (max_us <= 0) return;
+    int duration = min_us + (rand() % (max_us - min_us + 1));
+    if (has_young_children) {
+        duration = (int)(duration * 1.5);
+    }
+    if (duration > 0) {
+        usleep(duration);
     }
 }
 

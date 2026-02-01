@@ -15,12 +15,12 @@ void sigterm_handler(int sig) {
 }
 
 static int run_exit_reporter(void) {
-    int report_msg_id = msgget(MSG_REPORT_KEY_ID, 0600);
+    int report_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_REPORT_ID), 0600);
     if (report_msg_id == -1) {
         fatal_error("[PRZEWODNIK-RAPORTER] Błąd msgget (report queue)");
     }
 
-    int msg_id = msgget(MSG_KEY_ID, 0600);
+    int msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
     if (msg_id == -1) {
         fatal_error("[PRZEWODNIK-RAPORTER] Błąd msgget (main queue)");
     }
@@ -160,6 +160,7 @@ void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direct
     }
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Przechodzę przez most..." CLR_RESET "\n", guide_id);
+    sim_sleep(BRIDGE_CROSS_TIME_MIN, BRIDGE_CROSS_TIME_MAX, 0);
 
     sem_unlock(sem_id, SEM_MOST_LIMIT);
 
@@ -261,6 +262,8 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Wszyscy na pokładzie! Odpływamy." CLR_RESET "\n", guide_id);
 
+    sim_sleep(FERRY_TRAVEL_TIME_MIN, FERRY_TRAVEL_TIME_MAX, 0);
+
     sem_lock(sem_id, SEM_PROM_MUTEX);
     park->ferry_position = destination;
     sem_unlock(sem_id, SEM_PROM_MUTEX);
@@ -310,7 +313,7 @@ int main(int argc, char* argv[]) {
 
     int id = atoi(argv[1]);
 
-    int shm_id = shmget(SHM_KEY_ID, sizeof(struct ParkSharedMemory), 0600);
+    int shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), 0600);
     if (shm_id == -1) {
         fatal_error("[PRZEWODNIK] Błąd shmget");
     }
@@ -320,12 +323,12 @@ int main(int argc, char* argv[]) {
         fatal_error("[PRZEWODNIK] Błąd shmat");
     }
 
-    int sem_id = semget(SEM_KEY_ID, TOTAL_SEMAPHORES, 0600);
+    int sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, 0600);
     if (sem_id == -1) {
         fatal_error("[PRZEWODNIK] Błąd semget");
     }
 
-    int msg_id = msgget(MSG_KEY_ID, 0600);
+    int msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
     if (msg_id == -1) {
         fatal_error("[PRZEWODNIK] Błąd msgget");
     }
@@ -606,10 +609,6 @@ int main(int argc, char* argv[]) {
                     case ATTR_TOWER:
 
                         printf(CLR_GREEN "[PRZEWODNIK %d] Czekam pod wieżą (nie wchodzę)." CLR_RESET "\n", id);
-
-                        if ((rand() % 100) < 3) {
-                            send_tower_evacuation(group, park, id);
-                        }
                         break;
 
                     case ATTR_FERRY:
@@ -623,8 +622,16 @@ int main(int argc, char* argv[]) {
 
             printf(CLR_GREEN "[PRZEWODNIK %d] Czekam aż wszyscy turyści skończą atrakcję %d..." CLR_RESET "\n", id, attraction);
 
-            for (int k = 0; k < group->size; k++) {
+            if (!emergency_before_start && attraction == ATTR_TOWER && group->size > 1 && (rand() % 100) < 3) {
                 sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
+                send_tower_evacuation(group, park, id);
+                for (int k = 1; k < group->size; k++) {
+                    sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
+                }
+            } else {
+                for (int k = 0; k < group->size; k++) {
+                    sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
+                }
             }
 
             printf(CLR_GREEN "[PRZEWODNIK %d] Wszyscy gotowi! Idziemy dalej." CLR_RESET "\n", id);
@@ -638,12 +645,17 @@ int main(int argc, char* argv[]) {
                     report_error("[PRZEWODNIK] Błąd semctl reset SEM_GROUP_DONE");
                 }
 
+                if (!emergency_before_start && (rand() % 100) < 2) {
+                    printf(CLR_BG_RED CLR_WHITE "[PRZEWODNIK %d] Awaria! Ewakuacja w trakcie trasy (po atrakcji %d)!" CLR_RESET "\n", id, attraction);
+                    emergency_before_start = 1;
+                    send_emergency_exit(group, id);
+                }
+
                 printf(CLR_GREEN "[PRZEWODNIK %d] Przechodzimy do następnej atrakcji." CLR_RESET "\n", id);
 
-                int walk_time = 1;
+                sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, has_young_children);
                 if (has_young_children) {
-                    //walk_time = (int)(walk_time * 1.5) + 1;
-                    printf(CLR_GREEN "[PRZEWODNIK %d] Wolniejsze tempo (dzieci) - %ds" CLR_RESET "\n", id, walk_time);
+                    printf(CLR_GREEN "[PRZEWODNIK %d] Wolniejsze tempo (dzieci <12 w grupie - czas +50%%)" CLR_RESET "\n", id);
                 }
 
                 for (int k = 0; k < group->size; k++) {
@@ -665,7 +677,7 @@ int main(int argc, char* argv[]) {
                 }
             } else {
                 char report[256];
-                sprintf(report, "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)\n", id, group->route, M_GROUP_SIZE);
+                sprintf(report, "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)\n", id, group->route, group->size);
                 if (write(fifo_fd, report, strlen(report)) == -1) {
                     report_error("[PRZEWODNIK] Błąd write FIFO");
                 }
