@@ -35,15 +35,31 @@ void cleanup() {
 
     struct sigaction sa;
     sa.sa_handler = SIG_IGN;
-    sigemptyset(&sa.sa_mask);
+    if (sigemptyset(&sa.sa_mask) == -1) {
+        report_error("[MAIN] Błąd sigemptyset w cleanup");
+    }
     sa.sa_flags = 0;
-    sigaction(SIGTERM, &sa, NULL);
+    if (sigaction(SIGTERM, &sa, NULL) == -1) {
+        report_error("[MAIN] Błąd sigaction(SIGTERM) w cleanup");
+    }
 
     if (kill(0, SIGTERM) == -1) {
         report_error("[MAIN] Błąd kill(SIGTERM) dla grupy procesów");
     }
 
-    while (waitpid(-1, NULL, 0) > 0 || errno == EINTR);
+    while (1) {
+        pid_t pid = waitpid(-1, NULL, 0);
+        if (pid > 0) {
+            continue;
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno != ECHILD) {
+            report_error("[MAIN] Błąd waitpid podczas sprzątania");
+        }
+        break;
+    }
 
     printf(CLR_WHITE "[MAIN] Procesy potomne posprzątane." CLR_RESET "\n");
 
@@ -85,7 +101,9 @@ void cleanup() {
 void handle_sigint(int sig) {
     (void)sig;
     const char msg[] = "\n\033[0;37m[MAIN] Otrzymano SIGINT (Ctrl + C). Kończę program.\033[0m\n";
-    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    if (write(STDOUT_FILENO, msg, sizeof(msg) - 1) == -1) {
+        report_error("[MAIN] Błąd write w handlerze SIGINT");
+    }
     exit(0);
 }
 
@@ -93,7 +111,21 @@ void handle_sigchld(int sig) {
     (void)sig;
     int saved_errno = errno;
     child_reap_in_progress = 1;
-    while (waitpid(-1, NULL, WNOHANG) > 0) {
+    while (1) {
+        pid_t pid = waitpid(-1, NULL, WNOHANG);
+        if (pid > 0) {
+            continue;
+        }
+        if (pid == 0) {
+            break;
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno != ECHILD) {
+            report_error("[MAIN] Błąd waitpid(WNOHANG) w SIGCHLD");
+        }
+        break;
     }
     child_reap_in_progress = 0;
     errno = saved_errno;
@@ -185,39 +217,23 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_PROM_MUTEX");
     }
 
-    arg.val = 1;
-    if (semctl(sem_id, SEM_FERRY_CONTROL, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_FERRY_CONTROL");
-    }
-
     arg.val = 0;
-    if (semctl(sem_id, SEM_FERRY_BOARD, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_FERRY_BOARD");
+    if (semctl(sem_id, SEM_FERRY_WAIT_KA, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_WAIT_KA");
     }
-
-    arg.val = 0;
-    if (semctl(sem_id, SEM_FERRY_BOARD_VIP, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_FERRY_BOARD_VIP");
+    if (semctl(sem_id, SEM_FERRY_WAIT_AK, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_WAIT_AK");
+    }
+    if (semctl(sem_id, SEM_FERRY_VIP_WAIT_KA, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_VIP_WAIT_KA");
+    }
+    if (semctl(sem_id, SEM_FERRY_VIP_WAIT_AK, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_FERRY_VIP_WAIT_AK");
     }
 
     arg.val = X3_FERRY_CAP;
     if (semctl(sem_id, SEM_FERRY_CAP, SETVAL, arg) == -1) {
         fatal_error("[MAIN] Błąd semctl SEM_FERRY_CAP");
-    }
-
-    arg.val = 0;
-    if (semctl(sem_id, SEM_FERRY_ALL_ABOARD, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_FERRY_ALL_ABOARD");
-    }
-
-    arg.val = 0;
-    if (semctl(sem_id, SEM_FERRY_ARRIVE, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_FERRY_ARRIVE");
-    }
-
-    arg.val = 0;
-    if (semctl(sem_id, SEM_FERRY_DISEMBARK, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_FERRY_DISEMBARK");
     }
 
     for (int i = 0; i < MAX_GROUPS; i++) {
@@ -231,6 +247,13 @@ void init_semaphores(int sem_id) {
         arg.val = 0;
         if (semctl(sem_id, SEM_BRIDGE_GUIDE_READY(i), SETVAL, arg) == -1) {
             fatal_error("[MAIN] Błąd semctl SEM_BRIDGE_GUIDE_READY");
+        }
+    }
+
+    for (int i = 0; i < MAX_GROUPS; i++) {
+        arg.val = 0;
+        if (semctl(sem_id, SEM_FERRY_GUIDE_READY(i), SETVAL, arg) == -1) {
+            fatal_error("[MAIN] Błąd semctl SEM_FERRY_GUIDE_READY");
         }
     }
 
@@ -321,6 +344,12 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists) {
     park->ferry_expected = 0;
     park->ferry_disembarked = 0;
     park->ferry_current_group = -1;
+    park->ferry_on_ferry = 0;
+    park->ferry_direction = DIR_NONE;
+    park->ferry_waiting_vip[0] = 0;
+    park->ferry_waiting_vip[1] = 0;
+    park->ferry_waiting_normal[0] = 0;
+    park->ferry_waiting_normal[1] = 0;
     park->next_group_slot = 0;
     park->tower_waiting_vip = 0;
     park->tower_waiting_normal = 0;
@@ -382,15 +411,23 @@ int main() {
 
     struct sigaction sa_int;
     sa_int.sa_handler = handle_sigint;
-    sigemptyset(&sa_int.sa_mask);
+    if (sigemptyset(&sa_int.sa_mask) == -1) {
+        fatal_error("[MAIN] Błąd sigemptyset(SIGINT)");
+    }
     sa_int.sa_flags = 0;
-    sigaction(SIGINT, &sa_int, NULL);
+    if (sigaction(SIGINT, &sa_int, NULL) == -1) {
+        fatal_error("[MAIN] Błąd sigaction(SIGINT)");
+    }
 
     struct sigaction sa_chld;
     sa_chld.sa_handler = handle_sigchld;
-    sigemptyset(&sa_chld.sa_mask);
+    if (sigemptyset(&sa_chld.sa_mask) == -1) {
+        fatal_error("[MAIN] Błąd sigemptyset(SIGCHLD)");
+    }
     sa_chld.sa_flags = SA_RESTART;
-    sigaction(SIGCHLD, &sa_chld, NULL);
+    if (sigaction(SIGCHLD, &sa_chld, NULL) == -1) {
+        fatal_error("[MAIN] Błąd sigaction(SIGCHLD)");
+    }
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
     printf(CLR_BOLD CLR_GREEN "SYMULACJA PARKU NARODOWEGO" CLR_RESET "\n");
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
@@ -548,9 +585,15 @@ int main() {
     printf("\n" CLR_WHITE "[MAIN] Wygenerowano %d turystów. Czekam na zakończenie zwiedzania..." CLR_RESET "\n", created_tourists);
     sigset_t block_mask;
     sigset_t prev_mask;
-    sigemptyset(&block_mask);
-    sigaddset(&block_mask, SIGCHLD);
-    sigprocmask(SIG_BLOCK, &block_mask, &prev_mask);
+    if (sigemptyset(&block_mask) == -1) {
+        fatal_error("[MAIN] Błąd sigemptyset(block_mask)");
+    }
+    if (sigaddset(&block_mask, SIGCHLD) == -1) {
+        fatal_error("[MAIN] Błąd sigaddset(SIGCHLD)");
+    }
+    if (sigprocmask(SIG_BLOCK, &block_mask, &prev_mask) == -1) {
+        fatal_error("[MAIN] Błąd sigprocmask(SIG_BLOCK)");
+    }
 
     while (1) {
         sem_lock(sem_id, SEM_STATS_MUTEX);
@@ -566,10 +609,14 @@ int main() {
         if (entered >= expected && in_park == 0) {
             break;
         }
-        sigsuspend(&prev_mask);
+        if (sigsuspend(&prev_mask) == -1 && errno != EINTR) {
+            report_error("[MAIN] Błąd sigsuspend");
+        }
     }
 
-    sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+    if (sigprocmask(SIG_SETMASK, &prev_mask, NULL) == -1) {
+        report_error("[MAIN] Błąd sigprocmask(SIG_SETMASK)");
+    }
 
     printf("\n" CLR_WHITE "[MAIN] Wszyscy turyści zakończyli procesy. Wysyłam sygnał do kasjera..." CLR_RESET "\n");
 
@@ -605,6 +652,8 @@ int main() {
     }
     printf(CLR_BOLD CLR_WHITE "==============================================" CLR_RESET "\n\n");
 
-    shmdt(park);
+    if (shmdt(park) == -1) {
+        report_error("[MAIN] Błąd shmdt");
+    }
     return 0;
 }

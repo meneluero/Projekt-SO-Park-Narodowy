@@ -198,97 +198,31 @@ void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direct
 
 void guide_take_ferry(int guide_id, int group_slot, int destination, struct ParkSharedMemory *park, int sem_id, int group_size) {
 
-    int my_shore = 1 - destination;
-    (void)group_slot;
+    printf(CLR_GREEN "[PRZEWODNIK %d] Podchodzę do promu (kierunek: %d)" CLR_RESET "\n", guide_id, destination);
 
-    printf(CLR_GREEN "[PRZEWODNIK %d] Podchodzę do promu (chcę na brzeg %d)" CLR_RESET "\n", guide_id, destination);
-
-    sem_lock(sem_id, SEM_FERRY_CONTROL);
-    printf(CLR_GREEN "[PRZEWODNIK %d] Przejąłem kontrolę nad promem" CLR_RESET "\n", guide_id);
-
-    sem_lock(sem_id, SEM_PROM_MUTEX);
-
-    if (park->ferry_position != my_shore) {
-        printf(CLR_GREEN "[PRZEWODNIK %d] Prom na drugim brzegu. Przywołuję..." CLR_RESET "\n", guide_id);
-        park->ferry_position = my_shore;
-        printf(CLR_GREEN "[PRZEWODNIK %d] Prom przypłynął na mój brzeg" CLR_RESET "\n", guide_id);
+    if (ferry_enter(park, sem_id, destination, 0, NULL) == -1) {
+        printf(CLR_RED "[PRZEWODNIK %d] Przerwano wejście na prom." CLR_RESET "\n", guide_id);
+        return;
     }
 
-    sem_lock(sem_id, SEM_FERRY_CAP);
-
-    park->ferry_passengers = 1;
-    park->ferry_expected = group_size + 1;
-    park->ferry_disembarked = 0;
-    park->ferry_current_group = group_slot;
-
-    sem_unlock(sem_id, SEM_PROM_MUTEX);
-
-    int vip_priority_flags[M_GROUP_SIZE] = {0};
-    for (int i = 0; i < group_size; i++) {
-        if (park->groups[group_slot].member_vips[i]) {
-            vip_priority_flags[i] = 1;
-        }
-    }
-    for (int i = 0; i < group_size; i++) {
-        if (park->groups[group_slot].member_vips[i] && park->groups[group_slot].member_ages[i] < 15) {
-            int caretaker_idx = park->groups[group_slot].member_has_caretaker[i];
-            if (caretaker_idx >= 0 && caretaker_idx < group_size) {
-                vip_priority_flags[caretaker_idx] = 1;
-            }
+    {
+        union semun reset_arg;
+        reset_arg.val = 0;
+        if (semctl(sem_id, SEM_FERRY_GUIDE_READY(group_slot), SETVAL, reset_arg) == -1) {
+            report_error("[PRZEWODNIK] Błąd semctl SEM_FERRY_GUIDE_READY");
         }
     }
 
-    int vip_slots = 0;
+    printf(CLR_GREEN "[PRZEWODNIK %d] Wsiadłem na prom jako pierwszy. Zapraszam grupę (%d osób)." CLR_RESET "\n", guide_id, group_size);
     for (int i = 0; i < group_size; i++) {
-        if (vip_priority_flags[i]) {
-            vip_slots++;
-        }
-    }
-    int normal_slots = group_size - vip_slots;
-
-    printf(CLR_GREEN "[PRZEWODNIK %d] Wsiadłem na prom jako pierwszy. Zapraszam grupę (%d osób, VIP-prio: %d)." CLR_RESET "\n", guide_id, group_size, vip_slots);
-
-    for (int i = 0; i < vip_slots; i++) {
-        sem_unlock(sem_id, SEM_FERRY_BOARD_VIP);
-    }
-    for (int i = 0; i < normal_slots; i++) {
-        sem_unlock(sem_id, SEM_FERRY_BOARD);
+        sem_unlock(sem_id, SEM_FERRY_GUIDE_READY(group_slot));
     }
 
-    printf(CLR_GREEN "[PRZEWODNIK %d] Czekam aż wszyscy wsiądą..." CLR_RESET "\n", guide_id);
-    for (int i = 0; i < group_size; i++) {
-        sem_lock(sem_id, SEM_FERRY_ALL_ABOARD);
-    }
-
-    printf(CLR_GREEN "[PRZEWODNIK %d] Wszyscy na pokładzie! Odpływamy." CLR_RESET "\n", guide_id);
-
+    printf(CLR_GREEN "[PRZEWODNIK %d] Prom płynie w kierunku %d." CLR_RESET "\n", guide_id, destination);
     sim_sleep(FERRY_TRAVEL_TIME_MIN, FERRY_TRAVEL_TIME_MAX, 0);
 
-    sem_lock(sem_id, SEM_PROM_MUTEX);
-    park->ferry_position = destination;
-    sem_unlock(sem_id, SEM_PROM_MUTEX);
-
-    printf(CLR_GREEN "[PRZEWODNIK %d] Dopłynęliśmy na brzeg %d!" CLR_RESET "\n", guide_id, destination);
-
-    for (int i = 0; i < group_size; i++) {
-        sem_unlock(sem_id, SEM_FERRY_ARRIVE);
-    }
-
-    printf(CLR_GREEN "[PRZEWODNIK %d] Czekam aż wszyscy wysiądą..." CLR_RESET "\n", guide_id);
-    for (int i = 0; i < group_size; i++) {
-        sem_lock(sem_id, SEM_FERRY_DISEMBARK);
-    }
-
-    printf(CLR_GREEN "[PRZEWODNIK %d] Wszyscy wysiedli z promu." CLR_RESET "\n", guide_id);
-
-    sem_lock(sem_id, SEM_PROM_MUTEX);
-    park->ferry_passengers = 0;
-    park->ferry_expected = 0;
-    park->ferry_current_group = -1;
-    sem_unlock(sem_id, SEM_PROM_MUTEX);
-
-    sem_unlock(sem_id, SEM_FERRY_CAP);
-    sem_unlock(sem_id, SEM_FERRY_CONTROL);
+    ferry_leave(park, sem_id, destination);
+    printf(CLR_GREEN "[PRZEWODNIK %d] Dopłynąłem i schodzę z promu." CLR_RESET "\n", guide_id);
 }
 
 int main(int argc, char* argv[]) {
@@ -301,7 +235,9 @@ int main(int argc, char* argv[]) {
     if (strcmp(argv[1], "reporter") == 0) {
         struct sigaction sa_term;
         sa_term.sa_handler = sigterm_handler;
-        sigemptyset(&sa_term.sa_mask);
+        if (sigemptyset(&sa_term.sa_mask) == -1) {
+            fatal_error("[PRZEWODNIK-RAPORTER] Błąd sigemptyset(SIGTERM)");
+        }
         sa_term.sa_flags = 0;
 
         if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
@@ -337,7 +273,9 @@ int main(int argc, char* argv[]) {
 
     struct sigaction sa_term;
     sa_term.sa_handler = sigterm_handler;
-    sigemptyset(&sa_term.sa_mask);
+    if (sigemptyset(&sa_term.sa_mask) == -1) {
+        fatal_error("[PRZEWODNIK] Błąd sigemptyset(SIGTERM)");
+    }
     sa_term.sa_flags = 0;  
 
     if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
@@ -513,6 +451,9 @@ int main(int argc, char* argv[]) {
         }
         if (semctl(sem_id, SEM_BRIDGE_GUIDE_READY(group_slot), SETVAL, arg) == -1) {
             report_error("[PRZEWODNIK] Błąd semctl SEM_BRIDGE_GUIDE_READY");
+        }
+        if (semctl(sem_id, SEM_FERRY_GUIDE_READY(group_slot), SETVAL, arg) == -1) {
+            report_error("[PRZEWODNIK] Błąd semctl SEM_FERRY_GUIDE_READY");
         }
         for (int k = 0; k < M_GROUP_SIZE; k++) {
             if (semctl(sem_id, SEM_MEMBER_GO(group_slot, k), SETVAL, arg) == -1) {
@@ -712,7 +653,9 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Kończę pracę - otrzymano sygnał zakończenia." CLR_RESET "\n", id);
 
-    shmdt(park);
+    if (shmdt(park) == -1) {
+        report_error("[PRZEWODNIK] Błąd shmdt");
+    }
 
     return 0;
 }

@@ -60,7 +60,9 @@ int main(int argc, char* argv[]) {
 
     struct sigaction sa_term;
     sa_term.sa_handler = sigterm_handler;
-    sigemptyset(&sa_term.sa_mask);
+    if (sigemptyset(&sa_term.sa_mask) == -1) {
+        fatal_error("[KASJER] Błąd sigemptyset(SIGTERM)");
+    }
     sa_term.sa_flags = 0;  
 
     if (sigaction(SIGTERM, &sa_term, NULL) == -1) {
@@ -197,7 +199,9 @@ int main(int argc, char* argv[]) {
         }
 
         printf(CLR_YELLOW "[KASJER %d] Czekam na zakończenie wątku FIFO..." CLR_RESET "\n", id);
-        waitpid(fifo_pid, NULL, 0);
+        if (waitpid(fifo_pid, NULL, 0) == -1) {
+            report_error("[KASJER] Błąd waitpid(FIFO)");
+        }
 
         printf(CLR_YELLOW "[KASJER %d] Zakończono pracę." CLR_RESET "\n", id);
     }
@@ -205,7 +209,9 @@ int main(int argc, char* argv[]) {
     if (close(log_fd) == -1) {
         report_error("[KASJER] Błąd close log");
     }
-    shmdt(park);
+    if (shmdt(park) == -1) {
+        report_error("[KASJER] Błąd shmdt");
+    }
 
     return 0;
 }

@@ -110,13 +110,14 @@
 #define SEM_BRIDGE_WAIT_KA (SEM_TOURIST_READ_DONE_BASE + N_PARK_CAPACITY)
 #define SEM_BRIDGE_WAIT_AK (SEM_BRIDGE_WAIT_KA + 1)
 
-#define SEM_FERRY_CONTROL (SEM_BRIDGE_WAIT_AK + 1)
-#define SEM_FERRY_BOARD (SEM_FERRY_CONTROL + 1)
-#define SEM_FERRY_ALL_ABOARD (SEM_FERRY_BOARD + 1)
-#define SEM_FERRY_ARRIVE (SEM_FERRY_ALL_ABOARD + 1)
-#define SEM_FERRY_DISEMBARK (SEM_FERRY_ARRIVE + 1)
+#define SEM_FERRY_WAIT_KA (SEM_BRIDGE_WAIT_AK + 1)
+#define SEM_FERRY_WAIT_AK (SEM_FERRY_WAIT_KA + 1)
+#define SEM_FERRY_VIP_WAIT_KA (SEM_FERRY_WAIT_AK + 1)
+#define SEM_FERRY_VIP_WAIT_AK (SEM_FERRY_VIP_WAIT_KA + 1)
+#define SEM_FERRY_CAP (SEM_FERRY_VIP_WAIT_AK + 1)
+#define SEM_FERRY_GUIDE_READY_BASE (SEM_FERRY_CAP + 1)
 
-#define SEM_MEMBER_GO_BASE (SEM_FERRY_DISEMBARK + 1)
+#define SEM_MEMBER_GO_BASE (SEM_FERRY_GUIDE_READY_BASE + MAX_GROUPS)
 
 #define SEM_QUEUE_SLOTS (SEM_MEMBER_GO_BASE + MAX_GROUPS * M_GROUP_SIZE)
 #define SEM_GROUP_SLOTS (SEM_QUEUE_SLOTS + 1)
@@ -125,9 +126,7 @@
 #define SEM_CASH_QUEUE_SLOTS (SEM_CASH_QUEUE_MUTEX + 1)
 #define SEM_TOWER_STAIRS_UP (SEM_CASH_QUEUE_SLOTS + 1)
 #define SEM_TOWER_STAIRS_DOWN (SEM_TOWER_STAIRS_UP + 1)
-#define SEM_FERRY_BOARD_VIP (SEM_TOWER_STAIRS_DOWN + 1)
-#define SEM_FERRY_CAP (SEM_FERRY_BOARD_VIP + 1)
-#define SEM_TOWER_VIP_WAIT (SEM_FERRY_CAP + 1)
+#define SEM_TOWER_VIP_WAIT (SEM_TOWER_STAIRS_DOWN + 1)
 #define SEM_TOWER_NORMAL_WAIT (SEM_TOWER_VIP_WAIT + 1)
 #define SEM_BRIDGE_GUIDE_READY_BASE (SEM_TOWER_NORMAL_WAIT + 1)
 
@@ -139,6 +138,9 @@
 #define SEM_BRIDGE_WAIT(dir) ((dir) == DIR_KA ? SEM_BRIDGE_WAIT_KA : SEM_BRIDGE_WAIT_AK)
 #define SEM_MEMBER_GO(group, member) (SEM_MEMBER_GO_BASE + (group) * M_GROUP_SIZE + (member))
 #define SEM_BRIDGE_GUIDE_READY(group) (SEM_BRIDGE_GUIDE_READY_BASE + (group))
+#define SEM_FERRY_GUIDE_READY(group) (SEM_FERRY_GUIDE_READY_BASE + (group))
+#define SEM_FERRY_WAIT(dir) ((dir) == 0 ? SEM_FERRY_WAIT_KA : SEM_FERRY_WAIT_AK)
+#define SEM_FERRY_VIP_WAIT(dir) ((dir) == 0 ? SEM_FERRY_VIP_WAIT_KA : SEM_FERRY_VIP_WAIT_AK)
 
 #define FTOK_PATH "./main"
 #define FTOK_SHM_ID 'S'
@@ -227,6 +229,10 @@ struct ParkSharedMemory {
     int ferry_expected;
     int ferry_disembarked;
     int ferry_current_group;
+    int ferry_on_ferry;
+    int ferry_direction;
+    int ferry_waiting_vip[2];
+    int ferry_waiting_normal[2];
 };
 
 union semun {
@@ -355,6 +361,122 @@ static inline int sem_timed_wait(int sem_id, int sem_num, int seconds,volatile s
             continue;
         }
         fatal_error("Błąd sem_timed_wait");
+    }
+}
+
+static inline int ferry_enter(struct ParkSharedMemory *park, int sem_id, int direction, int is_vip, volatile sig_atomic_t *interrupt_flag) {
+    while (1) {
+        sem_lock(sem_id, SEM_PROM_MUTEX);
+        if (park->ferry_direction == DIR_NONE || park->ferry_direction == direction) {
+            if (!is_vip && park->ferry_waiting_vip[direction] > 0) {
+                park->ferry_waiting_normal[direction]++;
+                sem_unlock(sem_id, SEM_PROM_MUTEX);
+
+                if (sem_lock_interruptible(sem_id, SEM_FERRY_WAIT(direction), interrupt_flag) == -1) {
+                    sem_lock(sem_id, SEM_PROM_MUTEX);
+                    if (park->ferry_waiting_normal[direction] > 0) {
+                        park->ferry_waiting_normal[direction]--;
+                    }
+                    sem_unlock(sem_id, SEM_PROM_MUTEX);
+                    return -1;
+                }
+                if (sem_lock_interruptible(sem_id, SEM_FERRY_CAP, interrupt_flag) == -1) {
+                    return -1;
+                }
+
+                sem_lock(sem_id, SEM_PROM_MUTEX);
+                park->ferry_on_ferry++;
+                sem_unlock(sem_id, SEM_PROM_MUTEX);
+                return 0;
+            } else {
+                park->ferry_direction = direction;
+                park->ferry_on_ferry++;
+                sem_unlock(sem_id, SEM_PROM_MUTEX);
+
+                if (sem_lock_interruptible(sem_id, SEM_FERRY_CAP, interrupt_flag) == -1) {
+                    sem_lock(sem_id, SEM_PROM_MUTEX);
+                    park->ferry_on_ferry--;
+                    if (park->ferry_on_ferry == 0) {
+                        park->ferry_direction = DIR_NONE;
+                    }
+                    sem_unlock(sem_id, SEM_PROM_MUTEX);
+                    return -1;
+                }
+                return 0;
+            }
+        }
+
+        if (is_vip) {
+            park->ferry_waiting_vip[direction]++;
+        } else {
+            park->ferry_waiting_normal[direction]++;
+        }
+        sem_unlock(sem_id, SEM_PROM_MUTEX);
+
+        if (sem_lock_interruptible(sem_id, is_vip ? SEM_FERRY_VIP_WAIT(direction) : SEM_FERRY_WAIT(direction), interrupt_flag) == -1) {
+            sem_lock(sem_id, SEM_PROM_MUTEX);
+            if (is_vip && park->ferry_waiting_vip[direction] > 0) {
+                park->ferry_waiting_vip[direction]--;
+            } else if (!is_vip && park->ferry_waiting_normal[direction] > 0) {
+                park->ferry_waiting_normal[direction]--;
+            }
+            sem_unlock(sem_id, SEM_PROM_MUTEX);
+            return -1;
+        }
+
+        if (sem_lock_interruptible(sem_id, SEM_FERRY_CAP, interrupt_flag) == -1) {
+            return -1;
+        }
+
+        sem_lock(sem_id, SEM_PROM_MUTEX);
+        park->ferry_on_ferry++;
+        sem_unlock(sem_id, SEM_PROM_MUTEX);
+        return 0;
+    }
+}
+
+static inline void ferry_leave(struct ParkSharedMemory *park, int sem_id, int direction) {
+    sem_unlock(sem_id, SEM_FERRY_CAP);
+
+    sem_lock(sem_id, SEM_PROM_MUTEX);
+    park->ferry_on_ferry--;
+
+    if (park->ferry_on_ferry == 0) {
+        int other_dir = 1 - direction;
+        int wake_dir = -1;
+
+        if (park->ferry_waiting_vip[other_dir] > 0 || park->ferry_waiting_normal[other_dir] > 0) {
+            wake_dir = other_dir;
+        } else if (park->ferry_waiting_vip[direction] > 0 || park->ferry_waiting_normal[direction] > 0) {
+            wake_dir = direction;
+        }
+
+        if (wake_dir != -1) {
+            int vip_to_wake = park->ferry_waiting_vip[wake_dir];
+            int normal_to_wake = park->ferry_waiting_normal[wake_dir];
+            park->ferry_direction = wake_dir;
+            if (vip_to_wake > 0) {
+                park->ferry_waiting_vip[wake_dir] = 0;
+            } else {
+                park->ferry_waiting_normal[wake_dir] = 0;
+            }
+            sem_unlock(sem_id, SEM_PROM_MUTEX);
+
+            if (vip_to_wake > 0) {
+                for (int i = 0; i < vip_to_wake; i++) {
+                    sem_unlock(sem_id, SEM_FERRY_VIP_WAIT(wake_dir));
+                }
+            } else {
+                for (int i = 0; i < normal_to_wake; i++) {
+                    sem_unlock(sem_id, SEM_FERRY_WAIT(wake_dir));
+                }
+            }
+        } else {
+            park->ferry_direction = DIR_NONE;
+            sem_unlock(sem_id, SEM_PROM_MUTEX);
+        }
+    } else {
+        sem_unlock(sem_id, SEM_PROM_MUTEX);
     }
 }
 
