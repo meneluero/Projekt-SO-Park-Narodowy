@@ -1450,4 +1450,8 @@ if ((all_entered == all_expected || park->park_closed) && queue_size > 0) {
 
 **Data:** 02.02.2026
 
+**Środowisko:** Ubuntu 24.04.1 LTS
+
+**Kompilator:** GCC 13.3.0
+
 **Repozytorium:** https://github.com/meneluero/Projekt-SO-Park-Narodowy
