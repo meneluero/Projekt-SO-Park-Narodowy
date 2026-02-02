@@ -2,8 +2,10 @@
 #include <signal.h>
 #include <fcntl.h>
 
+// flaga do bezpiecznego konczenia pracy po otrzymaniu sygnalu
 volatile sig_atomic_t shutdown_flag = 0;
 
+// handler sygnalu sigterm - ustawia flage zakonczenia
 void sigterm_handler(int sig) {
     (void)sig;  
 
@@ -14,6 +16,7 @@ void sigterm_handler(int sig) {
     }
 }
 
+// specjalna funkcja dla procesu-reportera (przekazuje info o wyjsciu do kasy)
 static int run_exit_reporter(void) {
     int report_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_REPORT_ID), 0600);
     if (report_msg_id == -1) {
@@ -27,8 +30,10 @@ static int run_exit_reporter(void) {
 
     printf(CLR_GREEN "[PRZEWODNIK-RAPORTER] Gotowy. Przekazuję wyjścia do kasy." CLR_RESET "\n");
 
+    // petla odbierajaca powiadomienia od turystow i wysylajaca je do kasy
     while (1) {
         struct msg_buffer notice;
+        // jesli flaga ustawiona, nie blokujemy zeby wyjsc z petli
         int flags = shutdown_flag ? IPC_NOWAIT : 0;
 
         if (msgrcv(report_msg_id, &notice, sizeof(notice) - sizeof(long), MSG_TYPE_EXIT_NOTICE, flags) == -1) {
@@ -40,12 +45,13 @@ static int run_exit_reporter(void) {
                 continue;
             }
             if (shutdown_flag && errno == ENOMSG) {
-                break;
+                break; // wyjscie z petli przy zamykaniu
             }
             report_error("[PRZEWODNIK-RAPORTER] Błąd msgrcv (notice)");
             break;
         }
 
+        // przygotowanie i wyslanie komunikatu do kasy
         struct msg_buffer exit_msg;
         exit_msg.msg_type = MSG_TYPE_EXIT;
         exit_msg.tourist_id = notice.tourist_id;
@@ -61,6 +67,7 @@ static int run_exit_reporter(void) {
     return 0;
 }
 
+// funkcja wysylajaca sygnal ewakuacji do czlonkow grupy
 void send_emergency_exit(struct GroupState *group, int guide_id) {
     printf(CLR_RED "\n[PRZEWODNIK %d] Sytuacja awaryjna! Wysyłam SIGUSR2 do grupy!" CLR_RESET "\n", guide_id);
 
@@ -78,6 +85,7 @@ void send_emergency_exit(struct GroupState *group, int guide_id) {
     printf(CLR_RED "[PRZEWODNIK %d] Odprowadzam grupę bezpośrednio do kasy." CLR_RESET "\n", guide_id);
 }
 
+// funkcja wysylajaca sygnal ewakuacji z wiezy
 void send_tower_evacuation(struct GroupState *group, struct ParkSharedMemory *park, int guide_id) {
     printf(CLR_RED "\n[PRZEWODNIK %d] Ewakuacja wieży! Wysyłam SIGUSR1!" CLR_RESET "\n", guide_id);
 
@@ -95,6 +103,7 @@ void send_tower_evacuation(struct GroupState *group, struct ParkSharedMemory *pa
     }
 }
 
+// funkcja pomocnicza do wysylania listy obecnosci przy wyjsciu
 static void send_exit_list_to_cashier(struct GroupState *group, int msg_id) {
     for (int i = 0; i < group->size; i++) {
         struct msg_buffer exit_msg;
@@ -113,6 +122,7 @@ static void send_exit_list_to_cashier(struct GroupState *group, int msg_id) {
     }
 }
 
+// szukanie wolnego miejsca w tablicy grup w pamieci dzielonej
 int find_free_group_slot(struct ParkSharedMemory *park) {
     for (int i = 0; i < MAX_GROUPS; i++) {
         if (!park->groups[i].active) {
@@ -123,28 +133,33 @@ int find_free_group_slot(struct ParkSharedMemory *park) {
 
 }
 
+// logika sterowania ruchem na moscie przez przewodnika
 void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direction, struct ParkSharedMemory *park, int sem_id) {
     printf(CLR_GREEN "[PRZEWODNIK %d] Podchodzę do mostu (kierunek: %s)" CLR_RESET "\n", guide_id, direction == DIR_KA ? "K->A" : "A->K");
 
     sem_lock(sem_id, SEM_MOST_MUTEX);
 
+    // sprawdzenie czy most jest wolny lub ma zgodny kierunek
     if (park->bridge_direction == DIR_NONE || park->bridge_direction == direction) {
 
         park->bridge_direction = direction;
         park->bridge_on_bridge++;
         sem_unlock(sem_id, SEM_MOST_MUTEX);
 
+        // czekanie na miejsce na moscie
         sem_lock(sem_id, SEM_MOST_LIMIT);
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Wchodzę na most pierwszy! (osób na moście: %d)" CLR_RESET "\n", guide_id, park->bridge_on_bridge);
     } else {
 
+        // jesli zly kierunek, czekamy na zmiane
         park->bridge_waiting[direction]++;
         printf(CLR_GREEN "[PRZEWODNIK %d] Most zajęty w przeciwnym kierunku. Czekam..." CLR_RESET "\n", guide_id);
         sem_unlock(sem_id, SEM_MOST_MUTEX);
 
         sem_lock(sem_id, SEM_BRIDGE_WAIT(direction));
 
+        // po obudzeniu czekamy na miejsce
         sem_lock(sem_id, SEM_MOST_LIMIT);
 
         sem_lock(sem_id, SEM_MOST_MUTEX);
@@ -155,6 +170,7 @@ void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direct
         printf(CLR_GREEN "[PRZEWODNIK %d] Obudzony! Wchodzę na most. (osób: %d)" CLR_RESET "\n", guide_id, count);
     }
 
+    // wpuszczenie grupy na most
     for (int i = 0; i < group_size; i++) {
         sem_unlock(sem_id, SEM_BRIDGE_GUIDE_READY(group_slot));
     }
@@ -162,16 +178,19 @@ void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direct
     printf(CLR_GREEN "[PRZEWODNIK %d] Przechodzę przez most..." CLR_RESET "\n", guide_id);
     sim_sleep(BRIDGE_CROSS_TIME_MIN, BRIDGE_CROSS_TIME_MAX, 0);
 
+    // zejscie z mostu
     sem_unlock(sem_id, SEM_MOST_LIMIT);
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Zszedłem z mostu." CLR_RESET "\n", guide_id);
 
+    // logika zmiany kierunku mostu jesli nikt nie zostal
     int other_dir = 1 - direction;
     sem_lock(sem_id, SEM_MOST_MUTEX);
     park->bridge_on_bridge--;
 
     if (park->bridge_on_bridge == 0) {
         if (park->bridge_waiting[other_dir] > 0) {
+            // zmiana kierunku i budzenie czekajacych z naprzeciwka
             park->bridge_direction = other_dir;
             int to_wake = park->bridge_waiting[other_dir];
             park->bridge_waiting[other_dir] = 0;
@@ -183,6 +202,7 @@ void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direct
             sem_unlock(sem_id, SEM_MOST_MUTEX);
             
         } else if (park->bridge_waiting[direction] == 0) {
+            // reset kierunku jesli nikt nie czeka
             park->bridge_direction = DIR_NONE;
             sem_unlock(sem_id, SEM_MOST_MUTEX);
         } else {
@@ -195,11 +215,12 @@ void guide_enter_bridge(int guide_id, int group_slot, int group_size, int direct
     printf(CLR_GREEN "[PRZEWODNIK %d] Czekam na drugiej stronie mostu na grupę." CLR_RESET "\n", guide_id);
 }
 
-
+// logika sterowania promem przez przewodnika
 void guide_take_ferry(int guide_id, int group_slot, int destination, struct ParkSharedMemory *park, int sem_id, int group_size) {
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Podchodzę do promu (kierunek: %d)" CLR_RESET "\n", guide_id, destination);
 
+    // wejscie na prom
     if (ferry_enter(park, sem_id, destination, 0, NULL) == -1) {
         printf(CLR_RED "[PRZEWODNIK %d] Przerwano wejście na prom." CLR_RESET "\n", guide_id);
         return;
@@ -213,6 +234,7 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
         }
     }
 
+    // wpuszczenie grupy na prom
     printf(CLR_GREEN "[PRZEWODNIK %d] Wsiadłem na prom jako pierwszy. Zapraszam grupę (%d osób)." CLR_RESET "\n", guide_id, group_size);
     for (int i = 0; i < group_size; i++) {
         sem_unlock(sem_id, SEM_FERRY_GUIDE_READY(group_slot));
@@ -221,6 +243,7 @@ void guide_take_ferry(int guide_id, int group_slot, int destination, struct Park
     printf(CLR_GREEN "[PRZEWODNIK %d] Prom płynie w kierunku %d." CLR_RESET "\n", guide_id, destination);
     sim_sleep(FERRY_TRAVEL_TIME_MIN, FERRY_TRAVEL_TIME_MAX, 0);
 
+    // zejscie z promu
     ferry_leave(park, sem_id, destination);
     printf(CLR_GREEN "[PRZEWODNIK %d] Dopłynąłem i schodzę z promu." CLR_RESET "\n", guide_id);
 }
@@ -232,6 +255,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
+    // jesli argument "reporter" - uruchomienie trybu specjalnego
     if (strcmp(argv[1], "reporter") == 0) {
         struct sigaction sa_term;
         sa_term.sa_handler = sigterm_handler;
@@ -249,6 +273,7 @@ int main(int argc, char* argv[]) {
 
     int id = atoi(argv[1]);
 
+    // polaczenie z pamiecia dzielona i semaforami
     int shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), 0600);
     if (shm_id == -1) {
         fatal_error("[PRZEWODNIK] Błąd shmget");
@@ -271,6 +296,7 @@ int main(int argc, char* argv[]) {
 
     srand(time(NULL) + id * 100);
 
+    // rejestracja obslugi sigterm
     struct sigaction sa_term;
     sa_term.sa_handler = sigterm_handler;
     if (sigemptyset(&sa_term.sa_mask) == -1) {
@@ -284,10 +310,12 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_GREEN "[PRZEWODNIK %d] Melduję się w pracy! Czekam na grupy..." CLR_RESET "\n", id);
 
+    // glowna petla pracy przewodnika
     while (!shutdown_flag) {
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Czekam na grupę..." CLR_RESET "\n", id);
 
+        // oczekiwanie na semaforze (budzenie przez turyste lub kase)
         if (sem_lock_interruptible(sem_id, SEM_PRZEWODNIK, &shutdown_flag) == -1) {
 
             printf(CLR_GREEN "[PRZEWODNIK %d] Przerwano czekanie na grupę - kończę pracę." CLR_RESET "\n", id);
@@ -301,6 +329,7 @@ int main(int argc, char* argv[]) {
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Obudzony! Czekam na wolny slot grupy..." CLR_RESET "\n", id);
 
+        // zajmowanie slotu na grupe
         if (sem_lock_interruptible(sem_id, SEM_GROUP_SLOTS, &shutdown_flag) == -1) {
             printf(CLR_GREEN "[PRZEWODNIK %d] Przerwano czekanie na slot grupy - kończę pracę." CLR_RESET "\n", id);
             break;
@@ -336,8 +365,9 @@ int main(int argc, char* argv[]) {
         int queue_size = park->people_in_queue;
         int actual_group_size = queue_size;
 
+        // obsluga niepelnej grupy pod koniec dzialania parku
         if (queue_size < M_GROUP_SIZE) {
-            if (all_entered == all_expected && queue_size > 0) {
+            if ((all_entered == all_expected || park->park_closed) && queue_size > 0) {
                 printf(CLR_GREEN "[PRZEWODNIK %d] Ostatnia niepełna grupa! Biorę %d osób." CLR_RESET "\n", id, queue_size);
             } else {
                 printf(CLR_GREEN "[PRZEWODNIK %d] Fałszywy alarm - kolejka niepełna (%d). Rezygnuję." CLR_RESET "\n", id, queue_size);
@@ -350,6 +380,7 @@ int main(int argc, char* argv[]) {
             actual_group_size = M_GROUP_SIZE;
         }
 
+        // czyszczenie struktury grupy
         for (int i = 0; i < M_GROUP_SIZE; i++) {
             group->member_is_caretaker[i] = 0;
             group->member_caretaker_of[i] = -1;
@@ -363,6 +394,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // pobieranie danych turystow z kolejki glownej
         for (int i = 0; i < actual_group_size; i++) {
             int idx = (park->queue_head + i) % N_PARK_CAPACITY;
             group->member_pids[i] = park->queue_pids[idx];
@@ -374,6 +406,7 @@ int main(int argc, char* argv[]) {
             park->assigned_member_index[idx] = i;
         }
 
+        // przydzielanie opiekunow dla dzieci ponizej 15 lat
         for (int i = 0; i < actual_group_size; i++) {
             if (group->member_ages[i] < 15) {
                 for (int j = 0; j < actual_group_size; j++) {
@@ -394,6 +427,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // jesli brakuje opiekunow, przewodnik przejmuje role opiekuna
         for (int i = 0; i < actual_group_size; i++) {
             if (group->member_ages[i] < 15 && group->member_has_caretaker[i] == -1) {
                 group->member_caretaker_is_guide[i] = 1;
@@ -404,6 +438,7 @@ int main(int argc, char* argv[]) {
 
         sem_unlock(sem_id, SEM_QUEUE_MUTEX);
 
+        // reset semaforow synchronizacji z turystami
         {
             union semun reset_arg;
             reset_arg.val = 0;
@@ -418,28 +453,33 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // powiadomienie turystow ze zostali przypisani
         for (int i = 0; i < actual_group_size; i++) {
             int idx = (park->queue_head + i) % N_PARK_CAPACITY;
             sem_unlock(sem_id, SEM_TOURIST_ASSIGNED(idx));
         }
 
+        // czekanie na potwierdzenie odczytu przez turystow
         printf(CLR_GREEN "[PRZEWODNIK %d] Czekam na potwierdzenie odczytu od turystów..." CLR_RESET "\n", id);
         for (int i = 0; i < actual_group_size; i++) {
             int idx = (park->queue_head + i) % N_PARK_CAPACITY;
             sem_lock(sem_id, SEM_TOURIST_READ_DONE(idx));
         }
 
+        // aktualizacja kolejki glownej
         sem_lock(sem_id, SEM_QUEUE_MUTEX);
         park->queue_head = (park->queue_head + actual_group_size) % N_PARK_CAPACITY;
         park->people_in_queue -= actual_group_size;
         sem_unlock(sem_id, SEM_QUEUE_MUTEX);
 
+        // zwolnienie miejsc w kolejce
         for(int i=0; i<actual_group_size; i++) {
             sem_unlock(sem_id, SEM_QUEUE_SLOTS);
         }
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Przydzieliłem turystów do grupy %d" CLR_RESET "\n", id, group_slot);
 
+        // inicjalizacja stanu grupy
         group->active = 1;
         group->guide_id = id;
         group->guide_pid = getpid();
@@ -460,7 +500,7 @@ int main(int argc, char* argv[]) {
                 report_error("[PRZEWODNIK] Błąd semctl SEM_MEMBER_GO");
             }
         }
-        group->route = (rand() % 2) + 1; 
+        group->route = (rand() % 2) + 1; // losowanie trasy
 
         group->current_attraction = ATTR_NONE;
         group->attraction_step = 0;
@@ -478,6 +518,7 @@ int main(int argc, char* argv[]) {
         }
         printf("\n");
 
+        // sprawdzenie czy sa male dzieci - wplywa na czas chodzenia
         int has_young_children = 0;
         for (int i = 0; i < group->size; i++) {
             if (group->member_ages[i] < 12) {
@@ -489,6 +530,7 @@ int main(int argc, char* argv[]) {
             printf(CLR_GREEN "[PRZEWODNIK %d] Uwaga: grupa z dziećmi < 12 lat - czas wydłużony o 50%%" CLR_RESET "\n", id);
         }
 
+        // losowa awaria przed startem
         int emergency_before_start = 0;
         if ((rand() % 100) < 2) {
             printf(CLR_BG_RED CLR_WHITE "[PRZEWODNIK %d] Awaria przed startem!" CLR_RESET "\n", id);
@@ -499,6 +541,7 @@ int main(int argc, char* argv[]) {
                 sem_unlock(sem_id, SEM_MEMBER_GO(group_slot, k));
             }
 
+            // raportowanie awarii przez fifo
             int fifo_fd = open(FIFO_PATH, O_WRONLY);
             if (fifo_fd == -1) {
                 if (errno != ENXIO) {
@@ -527,12 +570,14 @@ int main(int argc, char* argv[]) {
 
             printf(CLR_GREEN "[PRZEWODNIK %d] Startujemy! Budzę turystów." CLR_RESET "\n", id);
 
+            // rozpoczecie wycieczki
             for (int k = 0; k < group->size; k++) {
                 sem_unlock(sem_id, SEM_MEMBER_GO(group_slot, k));
             }
 
         }
 
+        // petla zwiedzania - 3 atrakcje
         for (int step = 0; step < 3; step++) {
             int attraction = get_attraction_for_step(group->route, step);
             group->current_attraction = attraction;
@@ -563,6 +608,7 @@ int main(int argc, char* argv[]) {
 
             printf(CLR_GREEN "[PRZEWODNIK %d] Czekam aż wszyscy turyści skończą atrakcję %d..." CLR_RESET "\n", id, attraction);
 
+            // losowa ewakuacja wiezy
             if (!emergency_before_start && attraction == ATTR_TOWER && group->size > 1 && (rand() % 100) < 3) {
                 sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
                 send_tower_evacuation(group, park, id);
@@ -570,6 +616,7 @@ int main(int argc, char* argv[]) {
                     sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
                 }
             } else {
+                // czekanie na wszystkich czlonkow grupy
                 for (int k = 0; k < group->size; k++) {
                     sem_lock(sem_id, SEM_GROUP_DONE(group_slot));
                 }
@@ -586,6 +633,7 @@ int main(int argc, char* argv[]) {
                     report_error("[PRZEWODNIK] Błąd semctl reset SEM_GROUP_DONE");
                 }
 
+                // losowa awaria w trakcie trasy
                 if (!emergency_before_start && (rand() % 100) < 2) {
                     printf(CLR_BG_RED CLR_WHITE "[PRZEWODNIK %d] Awaria! Ewakuacja w trakcie trasy (po atrakcji %d)!" CLR_RESET "\n", id, attraction);
                     emergency_before_start = 1;
@@ -594,6 +642,7 @@ int main(int argc, char* argv[]) {
 
                 printf(CLR_GREEN "[PRZEWODNIK %d] Przechodzimy do następnej atrakcji." CLR_RESET "\n", id);
 
+                // symulacja czasu przejscia
                 sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, has_young_children);
                 if (has_young_children) {
                     printf(CLR_GREEN "[PRZEWODNIK %d] Wolniejsze tempo (dzieci <12 w grupie - czas +50%%)" CLR_RESET "\n", id);
@@ -608,8 +657,10 @@ int main(int argc, char* argv[]) {
         printf(CLR_GREEN "\n[PRZEWODNIK %d] Koniec wycieczki!" CLR_RESET "\n", id);
         printf(CLR_GREEN "[PRZEWODNIK %d] Odprowadzam grupę do kasy." CLR_RESET "\n", id);
 
+        // raportowanie wyjscia do kasy
         send_exit_list_to_cashier(group, msg_id);
 
+        // zapis do fifo
         if (!emergency_before_start) {
             int fifo_fd = open(FIFO_PATH, O_WRONLY);
             if (fifo_fd == -1) {
@@ -632,6 +683,7 @@ int main(int argc, char* argv[]) {
 
         sem_unlock(sem_id, SEM_GROUP_SLOTS);
 
+        // sprawdzenie czy nie ma niedobitkow w kolejce na koniec dnia
         sem_lock(sem_id, SEM_STATS_MUTEX);
         int check_entered = park->total_entered;
         int check_expected = park->total_expected;

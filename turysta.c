@@ -1,14 +1,17 @@
 #include "common.h"
 #include <signal.h>
 
+// flagi do obslugi sygnalow
 volatile sig_atomic_t tower_evacuation_flag = 0;
 volatile sig_atomic_t emergency_exit_flag = 0;
 volatile sig_atomic_t sigterm_flag = 0;
 
+// zmienne globalne potrzebne w handlerach sygnalow
 int g_sem_id = -1;
 int g_id = -1;
 struct ParkSharedMemory *g_park = NULL;
 
+// zmienne dotyczace opieki nad dziecmi
 int g_is_caretaker = 0;
 int g_caretaker_child_age = -1;
 int g_my_caretaker_id = -1;
@@ -17,6 +20,7 @@ int g_has_guide_caretaker = 0;
 int g_member_index = -1;
 int g_has_queue_slot = 0;
 
+// funkcja pomocnicza do bezpiecznej konwersji int na string (dla write w handlerze)
 static int int_to_str(int val, char *buf, int buf_size) {
     if (buf_size < 2) return 0;
     int neg = 0, len = 0;
@@ -30,7 +34,9 @@ static int int_to_str(int val, char *buf, int buf_size) {
     return pos;
 }
 
+// procedura wejscia do parku, aktualizacji statystyk i wyslania komunikatu
 static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int msg_id, struct ParkSharedMemory *park) {
+    // blokada licznika wejsc
     sem_lock(sem_id, SEM_PARK_LIMIT);
 
     sem_lock(sem_id, SEM_STATS_MUTEX);
@@ -46,6 +52,7 @@ static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int m
     }
     sem_unlock(sem_id, SEM_STATS_MUTEX);
 
+    // wyslanie wiadomosci do kasy
     struct msg_buffer entry_msg;
     entry_msg.msg_type = MSG_TYPE_ENTRY;
     entry_msg.tourist_id = id;
@@ -58,6 +65,7 @@ static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int m
     }
 }
 
+// obsluga sygnalu sigterm (zakonczenie programu)
 void sigterm_handler(int sig) {
     (void)sig;
     sigterm_flag = 1;
@@ -65,6 +73,7 @@ void sigterm_handler(int sig) {
     if (signal(SIGTERM, SIG_DFL) == SIG_ERR) {
         report_error("[TURYSTA] Błąd signal(SIGTERM)");
     }
+    // bezpieczne wypisywanie komunikatu bez uzycia printf
     char msg[128];
     int pos = 0;
     const char p1[] = "\n\033[1;31m[TURYSTA ";
@@ -77,6 +86,7 @@ void sigterm_handler(int sig) {
     }
 }
 
+// obsluga sygnalu ewakuacji z wiezy
 void sigusr1_handler(int sig) {
     (void)sig;
     tower_evacuation_flag = 1;
@@ -92,6 +102,7 @@ void sigusr1_handler(int sig) {
     }
 }
 
+// obsluga sygnalu ewakuacji ogolnej (powrot do kasy)
 void sigusr2_handler(int sig) {
     (void)sig;
     emergency_exit_flag = 1;
@@ -107,6 +118,7 @@ void sigusr2_handler(int sig) {
     }
 }
 
+// logika zajmowania miejsca na wiezy z uwzglednieniem priorytetu vip
 static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_vip) {
     while (1) {
         if (emergency_exit_flag) {
@@ -114,6 +126,7 @@ static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_
         }
 
         sem_lock(sem_id, SEM_WIEZA_MUTEX);
+        // sprawdzenie czy jest miejsce i czy nie ma oczekujacych vipow (dla zwyklych)
         int can_enter = (park->tower_current_count < X2_TOWER_CAP);
         if (!is_vip) {
             can_enter = can_enter && (park->tower_waiting_vip == 0);
@@ -124,10 +137,12 @@ static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_
             return 0;
         }
 
+        // jesli brak miejsc, czekamy na odpowiednim semaforze
         if (is_vip) {
             park->tower_waiting_vip++;
             sem_unlock(sem_id, SEM_WIEZA_MUTEX);
             if (sem_lock_interruptible(sem_id, SEM_TOWER_VIP_WAIT, &emergency_exit_flag) == -1) {
+                // obsluga przerwania czekania
                 sem_lock(sem_id, SEM_WIEZA_MUTEX);
                 if (park->tower_waiting_vip > 0) {
                     park->tower_waiting_vip--;
@@ -140,6 +155,7 @@ static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_
             park->tower_waiting_normal++;
             sem_unlock(sem_id, SEM_WIEZA_MUTEX);
             if (sem_lock_interruptible(sem_id, SEM_TOWER_NORMAL_WAIT, &emergency_exit_flag) == -1) {
+                // obsluga przerwania czekania
                 sem_lock(sem_id, SEM_WIEZA_MUTEX);
                 if (park->tower_waiting_normal > 0) {
                     park->tower_waiting_normal--;
@@ -152,11 +168,13 @@ static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_
     }
 }
 
+// zwalnianie miejsca na wiezy i budzenie oczekujacych
 static void tower_release_slot(int sem_id, struct ParkSharedMemory *park) {
     sem_lock(sem_id, SEM_WIEZA_MUTEX);
     if (park->tower_current_count > 0) {
         park->tower_current_count--;
     }
+    // priorytet dla vipow przy wpuszczaniu
     if (park->tower_waiting_vip > 0) {
         park->tower_waiting_vip--;
         park->tower_current_count++;
@@ -174,6 +192,7 @@ static void tower_release_slot(int sem_id, struct ParkSharedMemory *park) {
     sem_unlock(sem_id, SEM_WIEZA_MUTEX);
 }
 
+// logika atrakcji: most
 void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct ParkSharedMemory *park, int sem_id) {
     int other_dir = 1 - direction;
     int entered_bridge = 0;  
@@ -185,6 +204,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
         return;
     }
 
+    // czekanie na przewodnika jesli w grupie
     if (group_id >= 0) {
         if (sem_lock_interruptible(sem_id, SEM_BRIDGE_GUIDE_READY(group_id), &emergency_exit_flag) == -1) {
             printf(CLR_RED "[TURYSTA %d] Ewakuacja przed mostem - nie czekam na przewodnika." CLR_RESET "\n", id);
@@ -192,6 +212,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
         }
     }
 
+    // logowanie opieki nad dziecmi
     if (age < 15) {
         if (g_my_caretaker_id >= 0) {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - idę przez most pod opieką turysty %d" CLR_RESET "\n", id, age, g_my_caretaker_id);
@@ -202,6 +223,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
         }
     }
 
+    // blokada dla dzieci bez opiekuna
     if (age < 15 && g_my_caretaker_id < 0 && !g_has_guide_caretaker) {
         printf(CLR_RED "[TURYSTA %d] Brak opiekuna - nie wchodzę na most." CLR_RESET "\n", id);
         return;
@@ -209,12 +231,14 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
 
     sem_lock(sem_id, SEM_MOST_MUTEX);
 
+    // logika wejscia na most: jesli pusty lub ten sam kierunek
     if (park->bridge_direction == DIR_NONE || park->bridge_direction == direction) {
 
         park->bridge_direction = direction;
         park->bridge_on_bridge++;
         sem_unlock(sem_id, SEM_MOST_MUTEX);
 
+        // czekanie na pojemnosc mostu
         if (sem_lock_interruptible(sem_id, SEM_MOST_LIMIT, &emergency_exit_flag) == -1) {
 
             sem_lock(sem_id, SEM_MOST_MUTEX);
@@ -236,6 +260,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
 
     } else {
 
+        // jesli zajety w przeciwnym kierunku - czekamy
         park->bridge_waiting[direction]++;
         printf(CLR_CYAN "[TURYSTA %d] Most zajęty w przeciwnym kierunku. Czekam..." CLR_RESET "\n", id);
         sem_unlock(sem_id, SEM_MOST_MUTEX);
@@ -260,6 +285,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
             park->bridge_on_bridge--;
             printf(CLR_RED "[TURYSTA %d] Ewakuacja podczas czekania na miejsce na moście (po obudzeniu, pozostało: %d)" CLR_RESET "\n", id, park->bridge_on_bridge);
 
+            // obsluga zwalniania mostu przy przerwaniu
             if (park->bridge_on_bridge == 0) {
                 if (park->bridge_waiting[other_dir] > 0) {
                     park->bridge_direction = other_dir;
@@ -284,6 +310,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
         printf(CLR_CYAN "[TURYSTA %d] Obudzony! Wchodzę na most (%d osób)" CLR_RESET "\n", id, count);
     }
 
+    // przejscie przez most
     if (entered_bridge) {
         if (!emergency_exit_flag) {
             printf(CLR_CYAN "[TURYSTA %d] Przechodzę przez most..." CLR_RESET "\n", id);
@@ -299,6 +326,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
 
         printf(CLR_CYAN "[TURYSTA %d] Zszedłem z mostu (pozostało: %d)" CLR_RESET "\n", id, park->bridge_on_bridge);
 
+        // zmiana kierunku mostu jesli jestesmy ostatni
         if (park->bridge_on_bridge == 0) {
             if (park->bridge_waiting[other_dir] > 0) {
         
@@ -324,6 +352,7 @@ void do_bridge(int id, int age, int is_vip, int direction, int group_id, struct 
     }
 }
 
+// logika atrakcji: wieza
 void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int sem_id) {
     if (age <= 5) {
         printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - nie mogę wejść na wieżę. Czekam na dole." CLR_RESET "\n", id, age);
@@ -363,6 +392,7 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
         printf(CLR_MAGENTA "[TURYSTA %d] Czekam na wejście na wieżę..." CLR_RESET "\n", id);
     }
 
+    // zajecie slotu w wiezy
     if (tower_acquire_slot(sem_id, park, is_vip) == -1) {
         printf(CLR_RED "[TURYSTA %d] Ewakuacja przed wejściem na wieżę!" CLR_RESET "\n", id);
         return;
@@ -374,6 +404,7 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
         return;
     }
 
+    // wejscie po schodach
     if (sem_lock_interruptible(sem_id, SEM_TOWER_STAIRS_UP, &emergency_exit_flag) == -1) {
         printf(CLR_RED "[TURYSTA %d] Ewakuacja podczas wejścia po schodach." CLR_RESET "\n", id);
         tower_release_slot(sem_id, park);
@@ -394,12 +425,14 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
 
     tower_evacuation_flag = 0;
 
+    // czas pobytu na wiezy
     int tower_stay_us = TOWER_VISIT_TIME_MIN;
     if (TOWER_VISIT_TIME_MAX > TOWER_VISIT_TIME_MIN) {
         tower_stay_us = TOWER_VISIT_TIME_MIN + (rand() % (TOWER_VISIT_TIME_MAX - TOWER_VISIT_TIME_MIN + 1));
     }
     int tower_stay_sec = (tower_stay_us > 0) ? (tower_stay_us + 999999) / 1000000 : 0;
 
+    // czekanie z mozliwoscia przerwania przez sygnal ewakuacji
     int tower_result;
     if (tower_stay_sec > 0) {
         tower_result = sem_timed_wait(sem_id, SEM_TOWER_WAIT, tower_stay_sec, &tower_evacuation_flag, &emergency_exit_flag);
@@ -415,6 +448,7 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
         }
     }
 
+    // zejscie po schodach
     sem_lock(sem_id, SEM_TOWER_STAIRS_DOWN);
     printf(CLR_MAGENTA "[TURYSTA %d] Schodzę po schodach w dół." CLR_RESET "\n", id);
     sem_unlock(sem_id, SEM_TOWER_STAIRS_DOWN);
@@ -428,10 +462,12 @@ void do_tower(int id, int age, int is_vip, struct ParkSharedMemory *park, int se
     printf(CLR_MAGENTA "[TURYSTA %d] Zszedłem z wieży" CLR_RESET "\n", id);
 }
 
+// logika atrakcji: prom
 void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMemory *park, int sem_id) {
 
     printf(CLR_CYAN "[TURYSTA %d] Podchodzę do promu" CLR_RESET "\n", id);
 
+    // sprawdzenie opieki
     if (age < 15) {
         if (g_my_caretaker_id >= 0) {
             printf(CLR_YELLOW "[TURYSTA %d] Mam %d lat - wsiadam na prom pod opieką turysty %d" CLR_RESET "\n", id, age, g_my_caretaker_id);
@@ -456,6 +492,7 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
         return;
     }
 
+    // czekanie na przewodnika
     if (my_group_id >= 0) {
         if (sem_lock_interruptible(sem_id, SEM_FERRY_GUIDE_READY(my_group_id), &emergency_exit_flag) == -1) {
             printf(CLR_RED "[TURYSTA %d] Ewakuacja przed promem - nie czekam na przewodnika." CLR_RESET "\n", id);
@@ -474,6 +511,7 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
         printf(CLR_CYAN "[TURYSTA %d] Czekam na możliwość wejścia na prom..." CLR_RESET "\n", id);
     }
 
+    // proba wejscia na prom (kolejkowanie)
     if (ferry_enter(park, sem_id, direction, is_vip, &emergency_exit_flag) == -1) {
         printf(CLR_RED "[TURYSTA %d] Ewakuacja podczas oczekiwania na prom." CLR_RESET "\n", id);
         return;
@@ -485,6 +523,7 @@ void do_ferry(int id, int my_group_id, int age, int is_vip, struct ParkSharedMem
     printf(CLR_CYAN "[TURYSTA %d] Wysiadłem z promu." CLR_RESET "\n", id);
 }
 
+// wersja promu dla vipow (samotnych)
 void do_ferry_vip(int id, int age, int route, struct ParkSharedMemory *park, int sem_id) {
     (void)age;
 
@@ -513,6 +552,7 @@ int main(int argc, char* argv[]) {
     int id = atoi(argv[1]);
     g_id = id; 
 
+    // inicjalizacja handlerow sygnalow
     struct sigaction sa1;
     sa1.sa_handler = sigusr1_handler;
     if (sigemptyset(&sa1.sa_mask) == -1) {
@@ -546,13 +586,14 @@ int main(int argc, char* argv[]) {
 
     srand(time(NULL) + id);
 
+    // losowanie atrybutow turysty
     int age = (rand() % 68) + 3; 
-
     int is_vip = (rand() % 100) < 5; 
     int vip_can_go_solo = (is_vip && age >= 15);
     int should_send_exit_notice = 1;
     int entry_msg_sent = 0;
 
+    // dolaczenie do pamieci dzielonej i semaforow
     int shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), 0600);
     int sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, 0600);
     int msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
@@ -578,6 +619,23 @@ int main(int argc, char* argv[]) {
         printf(CLR_CYAN "[TURYSTA %d] Przychodzę do parku (wiek: %d)." CLR_RESET "\n", id, age);
     }
 
+    // sprawdzenie czy park jest otwarty
+    if (park->park_closed || time(NULL) >= park->park_closing_time) {
+        printf(CLR_YELLOW "[TURYSTA %d] Park zamknięty (Tk). Odchodzę." CLR_RESET "\n", id);
+        fflush(stdout);
+
+        sem_lock(sem_id, SEM_STATS_MUTEX);
+        park->rejected_after_close++;
+        park->total_expected--;
+        sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+        if (shmdt(park) == -1) {
+            report_error("[TURYSTA] Błąd shmdt");
+        }
+        return 0;
+    }
+
+    // sciezka dla vipow zwiedzajacych samotnie
     if (vip_can_go_solo) {
         printf(CLR_MAGENTA "[TURYSTA %d] VIP: wejście bezpłatne, pomijam kasę." CLR_RESET "\n", id);
         enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
@@ -616,6 +674,7 @@ int main(int argc, char* argv[]) {
         printf(CLR_MAGENTA "[TURYSTA %d] VIP-dziecko: wejście bezpłatne." CLR_RESET "\n", id);
     }
 
+    // sciezka dla turystow grupowych
     if (!is_vip) {
         if (sem_lock_interruptible(sem_id, SEM_CASH_QUEUE_SLOTS, &emergency_exit_flag) == -1) {
             printf(CLR_RED "[TURYSTA %d] Ewakuacja przed kasą!" CLR_RESET "\n", id);
@@ -643,6 +702,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // wejscie do kolejki grupowej
     if (sem_lock_interruptible(sem_id, SEM_QUEUE_SLOTS, &emergency_exit_flag) == -1) {
         printf(CLR_RED "[TURYSTA %d] Ewakuacja przed wejściem do kolejki!" CLR_RESET "\n", id);
         goto cleanup;
@@ -678,8 +738,14 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przewodnika. (Kolejka: %d/%d)" CLR_RESET "\n", id, current_count, M_GROUP_SIZE);
 
+    // budzenie przewodnika jesli kolejka pelna lub zamykamy park
     if (current_count >= M_GROUP_SIZE) {
         printf(CLR_CYAN "[TURYSTA %d] Kolejka ma %d osób - budzę przewodnika!" CLR_RESET "\n", id, current_count);
+        if (sem_getval(sem_id, SEM_PRZEWODNIK) == 0) {
+            sem_unlock(sem_id, SEM_PRZEWODNIK);
+        }
+    } else if (park->park_closed && current_count > 0) {
+        printf(CLR_YELLOW "[TURYSTA %d] Park zamknięty, budzę przewodnika dla niepełnej grupy (%d osób)." CLR_RESET "\n", id, current_count);
         if (sem_getval(sem_id, SEM_PRZEWODNIK) == 0) {
             sem_unlock(sem_id, SEM_PRZEWODNIK);
         }
@@ -687,6 +753,7 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na przydzielenie do grupy (pozycja %d)..." CLR_RESET "\n", id, my_position);
 
+    // oczekiwanie na przypisanie przez przewodnika
     sem_lock(sem_id, SEM_TOURIST_ASSIGNED(my_position));
 
     sem_lock(sem_id, SEM_QUEUE_MUTEX);
@@ -712,6 +779,7 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_CYAN "[TURYSTA %d] Czekam na start wycieczki..." CLR_RESET "\n", id);
 
+    // sprawdzanie przydzialu opieki w grupie
     struct GroupState *my_group = &park->groups[my_group_id];
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         if (my_group->member_pids[i] == getpid()) {
@@ -746,6 +814,7 @@ int main(int argc, char* argv[]) {
 
     printf(CLR_CYAN "[TURYSTA %d] Wycieczka start! Trasa %d" CLR_RESET "\n", id, route);
 
+    // petla zwiedzania atrakcji
     for (int step = 0; step < 3; step++) {
 
         int attraction = get_attraction_for_step(route, step);
@@ -767,6 +836,7 @@ int main(int argc, char* argv[]) {
             printf(CLR_RED "[TURYSTA %d] Ewakuacja! Pomijam atrakcję %d, ale zgłaszam obecność." CLR_RESET "\n", id, attraction);
         }
 
+        // zgloszenie wykonania etapu przewodnikowi
         sem_unlock(sem_id, SEM_GROUP_DONE(my_group_id));
 
         if (!emergency_exit_flag) {
@@ -789,6 +859,7 @@ cleanup:
 
     printf(CLR_GREEN "[TURYSTA %d] Wychodzę z parku." CLR_RESET "\n", id);
 
+    // wyslanie powiadomienia o wyjsciu
     if (should_send_exit_notice) {
         struct msg_buffer notice_msg;
         notice_msg.msg_type = MSG_TYPE_EXIT_NOTICE;
@@ -805,6 +876,7 @@ cleanup:
         }
     }
 
+    // aktualizacja licznikow w parku
     sem_lock(sem_id, SEM_STATS_MUTEX);
     if (park->people_in_park > 0) {
         park->people_in_park--;
