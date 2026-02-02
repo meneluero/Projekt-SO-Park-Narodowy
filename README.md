@@ -1197,8 +1197,6 @@ Turyści raportują SIGUSR2: Alarm! Natychmiastowy powrót do kasy!.
 
 Mimo chaosu, liczba osób w parku na koniec wynosi 0.
 
-Semafor SEM_MOST_LIMIT i inne liczniki atrakcji wracają do stanu początkowego (nikt nie utknął "logicznie" na moście po ewakuacji).
-
 **Przebieg:**
 ```text
 ============== STATYSTYKI PARKU ==============
