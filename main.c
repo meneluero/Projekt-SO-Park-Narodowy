@@ -118,6 +118,11 @@ void handle_sigint(int sig) {
 }
 
 // obsluga zakonczenia procesu zombie
+// pusty handler sigalrm - jedynie do wybudzenia sigsuspend
+void handle_sigalrm(int sig) {
+    (void)sig;
+}
+
 void handle_sigchld(int sig) {
     (void)sig;
     int saved_errno = errno;
@@ -167,11 +172,7 @@ void init_semaphores(int sem_id) {
 
     printf(CLR_WHITE "[MAIN] Inicjalizacja %d semaforów..." CLR_RESET "\n", TOTAL_SEMAPHORES);
 
-    // ustawienie limitu wejsc do parku
-    arg.val = N_PARK_CAPACITY;
-    if (semctl(sem_id, SEM_PARK_LIMIT, SETVAL, arg) == -1) {
-        fatal_error("[MAIN] Błąd semctl SEM_PARK_LIMIT");
-    }
+    // SEM_PARK_LIMIT (index 0) - nieuzywany, limit dzienny realizowany przez pole daily_entered_count w pamieci dzielonej
 
     arg.val = 0;
     if (semctl(sem_id, SEM_PRZEWODNIK, SETVAL, arg) == -1) {
@@ -342,11 +343,16 @@ void init_semaphores(int sem_id) {
         fatal_error("[MAIN] Błąd semctl SEM_CASH_QUEUE_SLOTS");
     }
 
+    arg.val = 0;
+    if (semctl(sem_id, SEM_ALL_DONE, SETVAL, arg) == -1) {
+        fatal_error("[MAIN] Błąd semctl SEM_ALL_DONE");
+    }
+
     printf(CLR_WHITE "[MAIN] Semafory zainicjalizowane pomyślnie." CLR_RESET "\n");
 }
 
 // inicjalizacja pamieci dzielonej
-void init_shared_memory(struct ParkSharedMemory *park, int num_tourists, int park_duration) {
+void init_shared_memory(struct ParkSharedMemory *park, int num_tourists, int park_duration, int daily_limit) {
     printf(CLR_WHITE "[MAIN] Inicjalizacja pamięci dzielonej..." CLR_RESET "\n");
 
     memset(park, 0, sizeof(struct ParkSharedMemory));
@@ -354,6 +360,10 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists, int par
     park->park_open_time = time(NULL);
     park->park_closing_time = park->park_open_time + park_duration;
     park->park_closed = 0;
+
+    park->daily_visitor_limit = daily_limit;
+    park->daily_entered_count = 0;
+    park->rejected_daily_limit = 0;
 
     park->total_expected = num_tourists;
     printf(CLR_WHITE "[MAIN] Oczekiwana liczba turystów: %d" CLR_RESET "\n", num_tourists);
@@ -460,13 +470,24 @@ int main() {
         fatal_error("[MAIN] Błąd sigaction(SIGCHLD)");
     }
 
+    struct sigaction sa_alrm;
+    sa_alrm.sa_handler = handle_sigalrm;
+    if (sigemptyset(&sa_alrm.sa_mask) == -1) {
+        fatal_error("[MAIN] Błąd sigemptyset(SIGALRM)");
+    }
+    sa_alrm.sa_flags = 0;
+    if (sigaction(SIGALRM, &sa_alrm, NULL) == -1) {
+        fatal_error("[MAIN] Błąd sigaction(SIGALRM)");
+    }
+
     // interfejs uzytkownika - parametry symulacji
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
     printf(CLR_BOLD CLR_GREEN "SYMULACJA PARKU NARODOWEGO" CLR_RESET "\n");
     printf(CLR_BOLD CLR_WHITE "==========================" CLR_RESET "\n");
     int num_tourists = get_input("Podaj liczbę turystów", 5, 30000);
     int num_guides = get_input("Podaj liczbę przewodników", 1, MAX_GROUPS);
-    int park_duration = get_input("Podaj czas otwarcia parku w sekundach (Tk)", 10, 600);
+    int park_duration = get_input("Podaj czas otwarcia parku w sekundach (Tk)", 1, 600);
+    int daily_limit = get_input("Podaj dzienny limit osób w parku (N)", 1, 30000);
 
     // walidacja pojemnosci promu
     if (X3_FERRY_CAP < M_GROUP_SIZE + 1) {
@@ -489,7 +510,7 @@ int main() {
         fatal_error("[MAIN] Błąd shmat");
     }
 
-    init_shared_memory(park, num_tourists, park_duration);
+    init_shared_memory(park, num_tourists, park_duration, daily_limit);
 
     sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, IPC_CREAT | 0600);
     if (sem_id == -1) {
@@ -643,6 +664,9 @@ int main() {
         int not_created = num_tourists - created_tourists;
         sem_lock(sem_id, SEM_STATS_MUTEX);
         park->total_expected -= not_created;
+        if (park->total_exited >= park->total_expected) {
+            sem_unlock(sem_id, SEM_ALL_DONE);
+        }
         sem_unlock(sem_id, SEM_STATS_MUTEX);
         printf(CLR_WHITE "[MAIN] Zaktualizowano total_expected: %d (nie stworzono %d turystów)" CLR_RESET "\n", park->total_expected, not_created);
     }
@@ -659,47 +683,28 @@ int main() {
     }
 
     printf("\n" CLR_WHITE "[MAIN] Wygenerowano %d turystów. Czekam na zakończenie zwiedzania..." CLR_RESET "\n", created_tourists);
-    
-    // blokowanie sygnalu sigchld na czas czekania
-    sigset_t block_mask;
-    sigset_t prev_mask;
-    if (sigemptyset(&block_mask) == -1) {
-        fatal_error("[MAIN] Błąd sigemptyset(block_mask)");
-    }
-    if (sigaddset(&block_mask, SIGCHLD) == -1) {
-        fatal_error("[MAIN] Błąd sigaddset(SIGCHLD)");
-    }
-    if (sigprocmask(SIG_BLOCK, &block_mask, &prev_mask) == -1) {
-        fatal_error("[MAIN] Błąd sigprocmask(SIG_BLOCK)");
+
+    // blokujace oczekiwanie na sygnal zakonczenia bez pollingu
+    sem_lock(sem_id, SEM_STATS_MUTEX);
+    int exited = park->total_exited;
+    int expected = park->total_expected;
+    sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+    if (exited < expected) {
+        sem_lock(sem_id, SEM_ALL_DONE);
     }
 
-    // petla oczekiwania na wyjscie wszystkich turystow
-    while (1) {
-        sem_lock(sem_id, SEM_STATS_MUTEX);
-        int exited = park->total_exited;
-        int entered = park->total_entered;
-        int expected = park->total_expected;
-        int in_park = park->people_in_park;
-        sem_unlock(sem_id, SEM_STATS_MUTEX);
+    printf("\n" CLR_WHITE "[MAIN] Wszyscy turyści zakończyli procesy. Kończę reportera..." CLR_RESET "\n");
 
-        if (exited >= expected) {
-            break; // wszyscy wyszli
-        }
-        if (entered >= expected && in_park == 0) {
-            break; // wszyscy ktorzy weszli juz wyszli
-        }
-
-        // czekanie na sygnal
-        if (sigsuspend(&prev_mask) == -1 && errno != EINTR) {
-            report_error("[MAIN] Błąd sigsuspend");
-        }
+    // reporter opróżnia kolejkę wyjść po SIGTERM i kończy
+    if (kill(reporter_pid, SIGTERM) == -1) {
+        report_error("[MAIN] Błąd kill(SIGTERM) przewodnik-raporter");
+    }
+    if (waitpid(reporter_pid, NULL, 0) == -1 && errno != ECHILD) {
+        report_error("[MAIN] Błąd waitpid(przewodnik-raporter)");
     }
 
-    if (sigprocmask(SIG_SETMASK, &prev_mask, NULL) == -1) {
-        report_error("[MAIN] Błąd sigprocmask(SIG_SETMASK)");
-    }
-
-    printf("\n" CLR_WHITE "[MAIN] Wszyscy turyści zakończyli procesy. Wysyłam sygnał do kasjera..." CLR_RESET "\n");
+    printf(CLR_WHITE "[MAIN] Wysyłam sygnał do kasjera..." CLR_RESET "\n");
 
     // zamykanie kasjera
     if (kill(kasjer_pid, SIGTERM) == -1) {
@@ -728,6 +733,7 @@ int main() {
         printf(CLR_WHITE "Godzina zamknięcia (Tk): %s" CLR_RESET "\n", close_buf);
         printf(CLR_WHITE "Czas otwarcia:           %d sekund" CLR_RESET "\n", park_duration);
     }
+    printf(CLR_WHITE "Limit dzienny (N):       %d" CLR_RESET "\n", park->daily_visitor_limit);
     printf(CLR_WHITE "Liczba przewodników:     %d" CLR_RESET "\n", num_guides);
     printf(CLR_WHITE "Wygenerowani turyści:    %d" CLR_RESET "\n", num_tourists);
     printf(CLR_WHITE "Weszło do parku:         %d" CLR_RESET "\n", park->total_entered);
@@ -738,6 +744,7 @@ int main() {
     printf(CLR_WHITE "Wejścia darmowe dzieci:  %d" CLR_RESET "\n", park->free_entries_children);
     printf(CLR_WHITE "Nie stworzeni:           %d" CLR_RESET "\n", num_tourists - created_tourists);
     printf(CLR_WHITE "Odrzuceni po Tk:         %d" CLR_RESET "\n", park->rejected_after_close);
+    printf(CLR_WHITE "Odrzuceni (limit N):     %d" CLR_RESET "\n", park->rejected_daily_limit);
     printf(CLR_WHITE "Przychód (PLN):          %d" CLR_RESET "\n", park->total_revenue);
     printf(CLR_BOLD CLR_WHITE "----------------------------------------------" CLR_RESET "\n");
 

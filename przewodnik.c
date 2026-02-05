@@ -55,6 +55,7 @@ static int run_exit_reporter(void) {
         struct msg_buffer exit_msg;
         exit_msg.msg_type = MSG_TYPE_EXIT;
         exit_msg.tourist_id = notice.tourist_id;
+        exit_msg.tourist_pid = notice.tourist_pid;
         exit_msg.age = notice.age;
         exit_msg.is_vip = notice.is_vip;
         strcpy(exit_msg.info, notice.info);
@@ -75,7 +76,7 @@ void send_emergency_exit(struct GroupState *group, int guide_id) {
 
     for (int i = 0; i < M_GROUP_SIZE; i++) {
         if (group->member_pids[i] > 0) {
-            printf(CLR_RED "[PRZEWODNIK %d] SIGUSR2 -> Turysta PID=%d" CLR_RESET "\n", guide_id, group->member_pids[i]);
+            printf(CLR_RED "[PRZEWODNIK %d] SIGUSR2 -> [T %d | PID %d]" CLR_RESET "\n", guide_id, group->member_ids[i], group->member_pids[i]);
             if (kill(group->member_pids[i], SIGUSR2) == -1) {
                 report_error("[PRZEWODNIK] Błąd kill SIGUSR2");
             }
@@ -95,7 +96,7 @@ void send_tower_evacuation(struct GroupState *group, struct ParkSharedMemory *pa
         pid_t pid = group->member_pids[i];
         if (pid > 0) {
             int on_tower = tower_has_visitor(park, pid);
-            printf(CLR_RED "[PRZEWODNIK %d] SIGUSR1 -> Turysta PID=%d (%s)" CLR_RESET "\n", guide_id, pid, on_tower ? "na wieży" : "czeka");
+            printf(CLR_RED "[PRZEWODNIK %d] SIGUSR1 -> [T %d | PID %d] (%s)" CLR_RESET "\n", guide_id, group->member_ids[i], pid, on_tower ? "na wieży" : "czeka");
             if (kill(pid, SIGUSR1) == -1) {
                 report_error("[PRZEWODNIK] Błąd kill SIGUSR1");
             }
@@ -109,6 +110,7 @@ static void send_exit_list_to_cashier(struct GroupState *group, int msg_id) {
         struct msg_buffer exit_msg;
         exit_msg.msg_type = MSG_TYPE_EXIT;
         exit_msg.tourist_id = group->member_ids[i];
+        exit_msg.tourist_pid = group->member_pids[i];
         exit_msg.age = group->member_ages[i];
         exit_msg.is_vip = group->member_vips[i];
 
@@ -358,6 +360,7 @@ int main(int argc, char* argv[]) {
         sem_lock(sem_id, SEM_STATS_MUTEX);
         int all_entered = park->total_entered;
         int all_expected = park->total_expected;
+        int daily_limit_reached = (park->daily_entered_count >= park->daily_visitor_limit);
         sem_unlock(sem_id, SEM_STATS_MUTEX);
 
         sem_lock(sem_id, SEM_QUEUE_MUTEX);
@@ -365,9 +368,9 @@ int main(int argc, char* argv[]) {
         int queue_size = park->people_in_queue;
         int actual_group_size = queue_size;
 
-        // obsluga niepelnej grupy pod koniec dzialania parku
+        // obsluga niepelnej grupy pod koniec dzialania parku lub po osiagnieciu limitu dziennego
         if (queue_size < M_GROUP_SIZE) {
-            if ((all_entered == all_expected || park->park_closed) && queue_size > 0) {
+            if ((all_entered == all_expected || park->park_closed || daily_limit_reached) && queue_size > 0) {
                 printf(CLR_GREEN "[PRZEWODNIK %d] Ostatnia niepełna grupa! Biorę %d osób." CLR_RESET "\n", id, queue_size);
             } else {
                 printf(CLR_GREEN "[PRZEWODNIK %d] Fałszywy alarm - kolejka niepełna (%d). Rezygnuję." CLR_RESET "\n", id, queue_size);
@@ -415,11 +418,11 @@ int main(int argc, char* argv[]) {
                         group->member_caretaker_of[j] = i;
                         group->member_has_caretaker[i] = j;
                         if (group->member_ages[i] <= 5) {
-                            printf(CLR_GREEN "[PRZEWODNIK %d] Turysta %d (wiek %d) jest opiekunem dziecka %d (wiek %d) - nie wejdą na wieżę" CLR_RESET "\n",
-                                   id, group->member_ids[j], group->member_ages[j], group->member_ids[i], group->member_ages[i]);
+                            printf(CLR_GREEN "[PRZEWODNIK %d] [T %d | PID %d] (wiek %d) jest opiekunem dziecka [T %d | PID %d] (wiek %d) - nie wejdą na wieżę" CLR_RESET "\n",
+                                   id, group->member_ids[j], group->member_pids[j], group->member_ages[j], group->member_ids[i], group->member_pids[i], group->member_ages[i]);
                         } else {
-                            printf(CLR_GREEN "[PRZEWODNIK %d] Turysta %d (wiek %d) jest opiekunem dziecka %d (wiek %d)" CLR_RESET "\n",
-                                   id, group->member_ids[j], group->member_ages[j], group->member_ids[i], group->member_ages[i]);
+                            printf(CLR_GREEN "[PRZEWODNIK %d] [T %d | PID %d] (wiek %d) jest opiekunem dziecka [T %d | PID %d] (wiek %d)" CLR_RESET "\n",
+                                   id, group->member_ids[j], group->member_pids[j], group->member_ages[j], group->member_ids[i], group->member_pids[i], group->member_ages[i]);
                         }
                         break;
                     }
@@ -431,8 +434,8 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < actual_group_size; i++) {
             if (group->member_ages[i] < 15 && group->member_has_caretaker[i] == -1) {
                 group->member_caretaker_is_guide[i] = 1;
-                printf(CLR_YELLOW "[PRZEWODNIK %d] Brak dorosłego opiekuna dla turysty %d (wiek %d) - przejmuję opiekę jako przewodnik." CLR_RESET "\n",
-                       id, group->member_ids[i], group->member_ages[i]);
+                printf(CLR_YELLOW "[PRZEWODNIK %d] Brak dorosłego opiekuna dla [T %d | PID %d] (wiek %d) - przejmuję opiekę jako przewodnik." CLR_RESET "\n",
+                       id, group->member_ids[i], group->member_pids[i], group->member_ages[i]);
             }
         }
 
@@ -514,7 +517,7 @@ int main(int argc, char* argv[]) {
 
         printf(CLR_GREEN "[PRZEWODNIK %d] Skład grupy (%d osób): " CLR_RESET, id, group->size);
         for (int i = 0; i < group->size; i++) {
-            printf(CLR_GREEN "T%d (W: %d%s) " CLR_RESET, group->member_ids[i], group->member_ages[i], group->member_vips[i] ? CLR_GREEN ", VIP" CLR_GREEN : "");
+            printf(CLR_GREEN "[T %d | PID %d] (W: %d%s) " CLR_RESET, group->member_ids[i], group->member_pids[i], group->member_ages[i], group->member_vips[i] ? CLR_GREEN ", VIP" CLR_GREEN : "");
         }
         printf("\n");
 

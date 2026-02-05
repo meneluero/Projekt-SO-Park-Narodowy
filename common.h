@@ -143,8 +143,9 @@
 #define SEM_TOWER_VIP_WAIT (SEM_TOWER_STAIRS_DOWN + 1)
 #define SEM_TOWER_NORMAL_WAIT (SEM_TOWER_VIP_WAIT + 1)
 #define SEM_BRIDGE_GUIDE_READY_BASE (SEM_TOWER_NORMAL_WAIT + 1)
+#define SEM_ALL_DONE (SEM_BRIDGE_GUIDE_READY_BASE + MAX_GROUPS)
 
-#define TOTAL_SEMAPHORES (SEM_BRIDGE_GUIDE_READY_BASE + MAX_GROUPS)
+#define TOTAL_SEMAPHORES (SEM_ALL_DONE + 1)
 
 // makra ulatwiajace dostep do konkretnych semaforow w tablicy
 #define SEM_GROUP_DONE(gid)  (SEM_GROUP_DONE_BASE + (gid))
@@ -176,6 +177,7 @@
 struct msg_buffer {
     long msg_type; 
     int tourist_id;
+    pid_t tourist_pid;
     int age;
     int is_vip; 
     char info[256]; 
@@ -215,6 +217,10 @@ struct ParkSharedMemory {
     time_t park_closing_time;
     int park_closed;
     int rejected_after_close;
+
+    int daily_visitor_limit; 
+    int daily_entered_count; 
+    int rejected_daily_limit; 
 
     int total_entered;
     int total_exited;

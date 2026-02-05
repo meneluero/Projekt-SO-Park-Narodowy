@@ -165,11 +165,11 @@ int main(int argc, char* argv[]) {
             // obsluga wejscia turysty
             if (message.msg_type == MSG_TYPE_ENTRY) {
                 if (message.is_vip) {
-                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] VIP Turysta %d (wiek: %d) - wejście bezpłatne\n", id, message.tourist_id, message.age);
+                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] VIP [T %d | PID %d] (wiek: %d) - wejście bezpłatne\n", id, message.tourist_id, message.tourist_pid, message.age);
                 } else if (message.age < 7) {
-                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] Turysta %d (wiek: %d) - dziecko, bilet bezpłatny\n", id, message.tourist_id, message.age);
+                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] (wiek: %d) - dziecko, bilet bezpłatny\n", id, message.tourist_id, message.tourist_pid, message.age);
                 } else {
-                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] Turysta %d (wiek: %d) - bilet normalny\n", id, message.tourist_id, message.age);
+                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] (wiek: %d) - bilet normalny\n", id, message.tourist_id, message.tourist_pid, message.age);
                 }
                 write_log(log_msg);
 
@@ -205,15 +205,20 @@ int main(int argc, char* argv[]) {
 
             } else if (message.msg_type == MSG_TYPE_EXIT) {
                 // obsluga wyjscia turysty
-                printf(CLR_YELLOW "[KASJER %d] Turysta %d - wyjście z parku" CLR_RESET "\n", id, message.tourist_id);
-                snprintf(log_msg, sizeof(log_msg), "[KASJER %d] Turysta %d - wyjście (czas w parku: %s)\n", id, message.tourist_id, message.info);
+                printf(CLR_YELLOW "[KASJER %d] [T %d | PID %d] - wyjście z parku" CLR_RESET "\n", id, message.tourist_id, message.tourist_pid);
+                snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] - wyjście (czas w parku: %s)\n", id, message.tourist_id, message.tourist_pid, message.info);
                 write_log(log_msg);
 
                 sem_lock(sem_id, SEM_STATS_MUTEX);
                 park->total_exited++;
                 int ent = park->total_entered;
                 int exp = park->total_expected;
+                int exited = park->total_exited;
                 sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+                if (exited >= exp) {
+                    sem_unlock(sem_id, SEM_ALL_DONE);
+                }
 
                 // sprawdzenie czy wszyscy wyszli i ewentualne budzenie przewodnika dla resztek
                 if (ent == exp) {
