@@ -649,7 +649,7 @@ int main(int argc, char* argv[]) {
     time_t seed_time = time(NULL);
     if (seed_time == (time_t)-1) {
         report_error(tourist_error_ctx("Błąd time (srand seed)"));
-        srand(id); // użyj id jako seed
+        srand(id); // uzyj id jako seed
     } else {
         srand(seed_time + id);
     }
@@ -691,7 +691,7 @@ int main(int argc, char* argv[]) {
     time_t check_time = time(NULL);
     if (check_time == (time_t)-1) {
         report_error(tourist_error_ctx("Błąd time (sprawdzenie zamknięcia parku)"));
-        check_time = park->park_closing_time; // załóż że park zamknięty w przypadku błędu
+        check_time = park->park_closing_time; // zaloz ze park zamkniety w przypadku bledu
     }
     if (park->park_closed || check_time >= park->park_closing_time) {
         printf(CLR_YELLOW "[T %d | PID %d] Park zamknięty (Tk). Odchodzę." CLR_RESET "\n", id, getpid());

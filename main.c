@@ -603,7 +603,7 @@ int main() {
     time_t seed_time = time(NULL);
     if (seed_time == (time_t)-1) {
         report_error("[MAIN] Błąd time (srand seed)");
-        srand(0); // użyj domyślnego seed'a
+        srand(0); // uzyj domyslnego seed'a
     } else {
         srand(seed_time);
     }
@@ -744,11 +744,11 @@ int main() {
 
     // raport koncowy
     printf("\n" CLR_BOLD CLR_WHITE "============== STATYSTYKI PARKU ==============" CLR_RESET "\n");
+    char open_buf[32] = "??:??:??";
+    char close_buf[32] = "??:??:??";
     {
         time_t open_t = park->park_open_time;
         time_t close_t = park->park_closing_time;
-        char open_buf[32] = "??:??:??";
-        char close_buf[32] = "??:??:??";
 
         struct tm *ot = localtime(&open_t);
         if (ot == NULL) {
@@ -797,6 +797,68 @@ int main() {
         printf(CLR_GREEN "Status: Park zamknięty, ruch zakończony." CLR_RESET "\n");
     }
     printf(CLR_BOLD CLR_WHITE "==============================================" CLR_RESET "\n\n");
+
+    {
+        int log_fd = open("park_log.txt", O_WRONLY | O_CREAT | O_APPEND, 0600);
+        if (log_fd == -1) {
+            report_error("[MAIN] Błąd open park_log.txt");
+        } else {
+            char log_buf[2048];
+            const char *status_str;
+            if (park->total_entered == park->total_exited && park->people_in_park == 0) {
+                status_str = "Sukces - wszyscy weszli i wyszli z parku!";
+            } else if (park->total_entered > park->total_exited) {
+                status_str = "Nie wszyscy wyszli z parku";
+            } else {
+                status_str = "Park zamknięty, ruch zakończony.";
+            }
+
+            int w = snprintf(log_buf, sizeof(log_buf),
+                "\n============== STATYSTYKI PARKU ==============\n"
+                "Godzina otwarcia (Tp):   %s\n"
+                "Godzina zamknięcia (Tk): %s\n"
+                "Czas otwarcia:           %d sekund\n"
+                "Limit dzienny (N):       %d\n"
+                "Liczba przewodników:     %d\n"
+                "Wygenerowani turyści:    %d\n"
+                "Weszło do parku:         %d\n"
+                "Wyszło z parku:          %d\n"
+                "Różnica (w parku):       %d\n"
+                "Bilety płatne:           %d\n"
+                "Wejścia darmowe VIP:     %d\n"
+                "Wejścia darmowe dzieci:  %d\n"
+                "Nie stworzeni:           %d\n"
+                "Odrzuceni po Tk:         %d\n"
+                "Odrzuceni (limit N):     %d\n"
+                "Przychód (PLN):          %d\n"
+                "----------------------------------------------\n"
+                "Status: %s\n"
+                "==============================================\n",
+                open_buf, close_buf, park_duration,
+                park->daily_visitor_limit, num_guides, num_tourists,
+                park->total_entered, park->total_exited,
+                park->total_entered - park->total_exited,
+                park->paid_entries, park->free_entries_vip, park->free_entries_children,
+                num_tourists - created_tourists,
+                park->rejected_after_close, park->rejected_daily_limit,
+                park->total_revenue, status_str);
+
+            if (w < 0) {
+                report_error("[MAIN] Błąd snprintf (statystyki do logu)");
+            } else {
+                size_t log_len = (size_t)w;
+                if (log_len >= sizeof(log_buf)) {
+                    log_len = sizeof(log_buf) - 1;
+                }
+                if (write(log_fd, log_buf, log_len) == -1) {
+                    report_error("[MAIN] Błąd write (statystyki do logu)");
+                }
+            }
+            if (close(log_fd) == -1) {
+                report_error("[MAIN] Błąd close park_log.txt");
+            }
+        }
+    }
 
     if (shmdt(park) == -1) {
         report_error("[MAIN] Błąd shmdt");

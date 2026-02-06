@@ -309,7 +309,7 @@ int main(int argc, char* argv[]) {
     time_t seed_time = time(NULL);
     if (seed_time == (time_t)-1) {
         report_error("[PRZEWODNIK] Błąd time (srand seed)");
-        srand(id * 100); // użyj id jako seed
+        srand(id * 100); // uzyj id jako seed
     } else {
         srand(seed_time + id * 100);
     }
