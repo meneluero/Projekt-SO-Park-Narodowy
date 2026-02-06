@@ -290,12 +290,34 @@ static inline void fatal_error(const char *context) {
     exit(1);
 }
 
+static inline int sem_use_undo(int sem_num) {
+    switch (sem_num) {
+        case SEM_QUEUE_MUTEX:
+        case SEM_STATS_MUTEX:
+        case SEM_MOST_LIMIT:
+        case SEM_MOST_MUTEX:
+        case SEM_WIEZA_LIMIT:
+        case SEM_WIEZA_MUTEX:
+        case SEM_PROM_MUTEX:
+        case SEM_GROUP_MUTEX:
+        case SEM_FERRY_CAP:
+        case SEM_GROUP_SLOTS:
+        case SEM_CASH_QUEUE_MUTEX:
+        case SEM_CASH_QUEUE_SLOTS:
+        case SEM_TOWER_STAIRS_UP:
+        case SEM_TOWER_STAIRS_DOWN:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 // operacja opuszczenia semafora
 static inline void sem_lock(int sem_id, int sem_num) {
     struct sembuf op;
     op.sem_num = sem_num;
     op.sem_op = -1;
-    op.sem_flg = 0;
+    op.sem_flg = sem_use_undo(sem_num) ? SEM_UNDO : 0;
 
     while (semop(sem_id, &op, 1) == -1) {
         if (errno == EINTR) { // wznowienie jesli przerwane sygnalem
@@ -310,7 +332,7 @@ static inline int sem_lock_interruptible(int sem_id, int sem_num, volatile sig_a
     struct sembuf op;
     op.sem_num = sem_num;
     op.sem_op = -1;
-    op.sem_flg = 0;
+    op.sem_flg = sem_use_undo(sem_num) ? SEM_UNDO : 0;
 
     while (semop(sem_id, &op, 1) == -1) {
         if (errno == EINTR) { 
@@ -329,7 +351,7 @@ static inline void sem_unlock(int sem_id, int sem_num) {
     struct sembuf op;
     op.sem_num = sem_num;
     op.sem_op = 1;
-    op.sem_flg = 0;
+    op.sem_flg = sem_use_undo(sem_num) ? SEM_UNDO : 0;
 
     while (semop(sem_id, &op, 1) == -1) {
         if (errno == EINTR) {
@@ -344,7 +366,7 @@ static inline int sem_trylock(int sem_id, int sem_num) {
     struct sembuf op;
     op.sem_num = sem_num;
     op.sem_op = -1;
-    op.sem_flg = IPC_NOWAIT;
+    op.sem_flg = IPC_NOWAIT | (sem_use_undo(sem_num) ? SEM_UNDO : 0);
 
     if (semop(sem_id, &op, 1) == -1) {
         if (errno == EAGAIN) {
@@ -354,6 +376,16 @@ static inline int sem_trylock(int sem_id, int sem_num) {
             return -1; 
         }
         fatal_error("Błąd sem_trylock");
+    }
+    return 0;
+}
+
+static inline int msgsnd_retry(int msqid, const void *msgp, size_t msgsz, int msgflg) {
+    while (msgsnd(msqid, msgp, msgsz, msgflg) == -1) {
+        if (errno == EINTR) {
+            continue;
+        }
+        return -1;
     }
     return 0;
 }

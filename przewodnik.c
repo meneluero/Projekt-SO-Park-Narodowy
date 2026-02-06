@@ -65,7 +65,7 @@ static int run_exit_reporter(void) {
         memcpy(exit_msg.info, notice.info, info_len);
         exit_msg.info[info_len] = '\0';
 
-        if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
+        if (msgsnd_retry(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
             report_error("[PRZEWODNIK-RAPORTER] Błąd msgsnd (wyjście)");
         }
     }
@@ -128,7 +128,7 @@ static void send_exit_list_to_cashier(struct GroupState *group, int msg_id) {
         memcpy(exit_msg.info, timestamp, len);
         exit_msg.info[len] = '\0';
 
-        if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
+        if (msgsnd_retry(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
             report_error("[PRZEWODNIK] Błąd msgsnd (wyjście turysty)");
         }
     }

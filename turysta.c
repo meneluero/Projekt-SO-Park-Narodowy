@@ -150,7 +150,7 @@ static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int m
     memcpy(entry_msg.info, info_msg, len);
     entry_msg.info[len] = '\0';
 
-    if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
+    if (msgsnd_retry(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
         fatal_error(tourist_error_ctx("Błąd msgsnd (wejście)"));
     }
 }
@@ -1045,7 +1045,7 @@ cleanup:
         memcpy(notice_msg.info, timestamp, len);
         notice_msg.info[len] = '\0';
 
-        if (msgsnd(report_msg_id, &notice_msg, sizeof(notice_msg) - sizeof(long), 0) == -1) {
+        if (msgsnd_retry(report_msg_id, &notice_msg, sizeof(notice_msg) - sizeof(long), 0) == -1) {
             report_error(tourist_error_ctx("Błąd msgsnd (notice wyjścia)"));
         }
     }
