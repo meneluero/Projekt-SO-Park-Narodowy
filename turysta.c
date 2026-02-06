@@ -40,12 +40,17 @@ static int int_to_str(int val, char *buf, int buf_size) {
 
 static const char *tourist_error_ctx(const char *msg) {
     static char buf[256];
+    int written;
     if (g_id >= 0 && g_pid > 0) {
-        snprintf(buf, sizeof(buf), "[T %d | PID %d] %s", g_id, (int)g_pid, msg);
+        written = snprintf(buf, sizeof(buf), "[T %d | PID %d] %s", g_id, (int)g_pid, msg);
     } else if (g_pid > 0) {
-        snprintf(buf, sizeof(buf), "[T ? | PID %d] %s", (int)g_pid, msg);
+        written = snprintf(buf, sizeof(buf), "[T ? | PID %d] %s", (int)g_pid, msg);
     } else {
-        snprintf(buf, sizeof(buf), "[T ? | PID ?] %s", msg);
+        written = snprintf(buf, sizeof(buf), "[T ? | PID ?] %s", msg);
+    }
+    if (written < 0) {
+        // W przypadku błędu snprintf, zwróć prostą wiadomość
+        return "[Turysta] Błąd formatowania komunikatu";
     }
     return buf;
 }
@@ -96,10 +101,17 @@ static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int m
     struct msg_buffer entry_msg;
     entry_msg.msg_type = MSG_TYPE_ENTRY;
     entry_msg.tourist_id = id;
-    entry_msg.tourist_pid = getpid();
+    pid_t pid = getpid();
+    entry_msg.tourist_pid = pid;
     entry_msg.age = age;
     entry_msg.is_vip = is_vip;
-    strcpy(entry_msg.info, "wejście do parku");
+    const char *info_msg = "wejście do parku";
+    size_t len = strlen(info_msg);
+    if (len >= sizeof(entry_msg.info)) {
+        len = sizeof(entry_msg.info) - 1;
+    }
+    memcpy(entry_msg.info, info_msg, len);
+    entry_msg.info[len] = '\0';
 
     if (msgsnd(msg_id, &entry_msg, sizeof(entry_msg) - sizeof(long), 0) == -1) {
         fatal_error(tourist_error_ctx("Błąd msgsnd (wejście)"));
@@ -634,7 +646,13 @@ int main(int argc, char* argv[]) {
         fatal_error(tourist_error_ctx("Błąd sigaction SIGTERM"));
     }
 
-    srand(time(NULL) + id);
+    time_t seed_time = time(NULL);
+    if (seed_time == (time_t)-1) {
+        report_error(tourist_error_ctx("Błąd time (srand seed)"));
+        srand(id); // użyj id jako seed
+    } else {
+        srand(seed_time + id);
+    }
 
     // losowanie atrybutow turysty
     int age = (rand() % 68) + 3; 
@@ -670,9 +688,16 @@ int main(int argc, char* argv[]) {
     }
 
     // sprawdzenie czy park jest otwarty
-    if (park->park_closed || time(NULL) >= park->park_closing_time) {
+    time_t check_time = time(NULL);
+    if (check_time == (time_t)-1) {
+        report_error(tourist_error_ctx("Błąd time (sprawdzenie zamknięcia parku)"));
+        check_time = park->park_closing_time; // załóż że park zamknięty w przypadku błędu
+    }
+    if (park->park_closed || check_time >= park->park_closing_time) {
         printf(CLR_YELLOW "[T %d | PID %d] Park zamknięty (Tk). Odchodzę." CLR_RESET "\n", id, getpid());
-        fflush(stdout);
+        if (fflush(stdout) == EOF) {
+            report_error(tourist_error_ctx("Błąd fflush (park zamknięty)"));
+        }
 
         sem_lock(sem_id, SEM_STATS_MUTEX);
         park->rejected_after_close++;
@@ -699,7 +724,9 @@ int main(int argc, char* argv[]) {
         sem_unlock(sem_id, SEM_STATS_MUTEX);
 
         printf(CLR_YELLOW "[T %d | PID %d] Osiągnięty limit dzienny (%d osób). Odchodzę." CLR_RESET "\n", id, getpid(), park->daily_visitor_limit);
-        fflush(stdout);
+        if (fflush(stdout) == EOF) {
+            report_error(tourist_error_ctx("Błąd fflush (limit dzienny)"));
+        }
 
         // jeśli limit osiągnięty, obudź przewodników dla ewentualnej niepełnej grupy
         wake_guides_for_queue(sem_id, park, 1);
@@ -727,6 +754,8 @@ int main(int argc, char* argv[]) {
         int route = (rand() % 2) + 1;
         printf(CLR_MAGENTA "[T %d | PID %d] VIP: startuję trasę %d solo." CLR_RESET "\n", id, getpid(), route);
 
+        //sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, 0);
+
         for (int step = 0; step < 3; step++) {
             int attraction = get_attraction_for_step(route, step);
             if (!emergency_exit_flag) {
@@ -745,7 +774,12 @@ int main(int argc, char* argv[]) {
             } else {
                 printf(CLR_RED "[T %d | PID %d] VIP: ewakuacja! Pomijam atrakcję %d." CLR_RESET "\n", id, getpid(), attraction);
             }
+            if (step < 2) {
+                //sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, 0);
+            }
         }
+
+        //sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, 0);
 
         printf(CLR_MAGENTA "[T %d | PID %d] VIP: koniec wycieczki. Wracam do kasy." CLR_RESET "\n", id, getpid());
         goto cleanup;
@@ -960,7 +994,12 @@ cleanup:
 
         char timestamp[20];
         get_timestamp(timestamp, sizeof(timestamp));
-        strcpy(notice_msg.info, timestamp);
+        size_t len = strlen(timestamp);
+        if (len >= sizeof(notice_msg.info)) {
+            len = sizeof(notice_msg.info) - 1;
+        }
+        memcpy(notice_msg.info, timestamp, len);
+        notice_msg.info[len] = '\0';
 
         if (msgsnd(report_msg_id, &notice_msg, sizeof(notice_msg) - sizeof(long), 0) == -1) {
             report_error(tourist_error_ctx("Błąd msgsnd (notice wyjścia)"));

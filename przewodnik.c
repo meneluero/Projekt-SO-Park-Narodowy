@@ -58,7 +58,12 @@ static int run_exit_reporter(void) {
         exit_msg.tourist_pid = notice.tourist_pid;
         exit_msg.age = notice.age;
         exit_msg.is_vip = notice.is_vip;
-        strcpy(exit_msg.info, notice.info);
+        size_t info_len = strlen(notice.info);
+        if (info_len >= sizeof(exit_msg.info)) {
+            info_len = sizeof(exit_msg.info) - 1;
+        }
+        memcpy(exit_msg.info, notice.info, info_len);
+        exit_msg.info[info_len] = '\0';
 
         if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
             report_error("[PRZEWODNIK-RAPORTER] Błąd msgsnd (wyjście)");
@@ -116,7 +121,12 @@ static void send_exit_list_to_cashier(struct GroupState *group, int msg_id) {
 
         char timestamp[20];
         get_timestamp(timestamp, sizeof(timestamp));
-        strcpy(exit_msg.info, timestamp);
+        size_t len = strlen(timestamp);
+        if (len >= sizeof(exit_msg.info)) {
+            len = sizeof(exit_msg.info) - 1;
+        }
+        memcpy(exit_msg.info, timestamp, len);
+        exit_msg.info[len] = '\0';
 
         if (msgsnd(msg_id, &exit_msg, sizeof(exit_msg) - sizeof(long), 0) == -1) {
             report_error("[PRZEWODNIK] Błąd msgsnd (wyjście turysty)");
@@ -296,7 +306,13 @@ int main(int argc, char* argv[]) {
         fatal_error("[PRZEWODNIK] Błąd msgget");
     }
 
-    srand(time(NULL) + id * 100);
+    time_t seed_time = time(NULL);
+    if (seed_time == (time_t)-1) {
+        report_error("[PRZEWODNIK] Błąd time (srand seed)");
+        srand(id * 100); // użyj id jako seed
+    } else {
+        srand(seed_time + id * 100);
+    }
 
     // rejestracja obslugi sigterm
     struct sigaction sa_term;
@@ -552,9 +568,17 @@ int main(int argc, char* argv[]) {
                 }
             } else {
                 char report[256];
-                sprintf(report, "Przewodnik %d - awaria przed startem\n", id);
-                if (write(fifo_fd, report, strlen(report)) == -1) {
-                    report_error("[PRZEWODNIK] Błąd write FIFO (awaria)");
+                int written = snprintf(report, sizeof(report), "Przewodnik %d - awaria przed startem\n", id);
+                if (written < 0) {
+                    report_error("[PRZEWODNIK] Błąd snprintf (raport awarii)");
+                } else {
+                    size_t report_len = (size_t)written;
+                    if (report_len >= sizeof(report)) {
+                        report_len = sizeof(report) - 1;
+                    }
+                    if (write(fifo_fd, report, report_len) == -1) {
+                        report_error("[PRZEWODNIK] Błąd write FIFO (awaria)");
+                    }
                 }
                 if (close(fifo_fd) == -1) {
                     report_error("[PRZEWODNIK] Błąd close FIFO (awaria)");
@@ -572,6 +596,8 @@ int main(int argc, char* argv[]) {
             }
 
             printf(CLR_GREEN "[PRZEWODNIK %d] Startujemy! Budzę turystów." CLR_RESET "\n", id);
+
+            //sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, has_young_children);
 
             // rozpoczecie wycieczki
             for (int k = 0; k < group->size; k++) {
@@ -660,6 +686,8 @@ int main(int argc, char* argv[]) {
         printf(CLR_GREEN "\n[PRZEWODNIK %d] Koniec wycieczki!" CLR_RESET "\n", id);
         printf(CLR_GREEN "[PRZEWODNIK %d] Odprowadzam grupę do kasy." CLR_RESET "\n", id);
 
+        //sim_sleep(WALK_TIME_MIN, WALK_TIME_MAX, has_young_children);
+
         // raportowanie wyjscia do kasy
         send_exit_list_to_cashier(group, msg_id);
 
@@ -672,9 +700,17 @@ int main(int argc, char* argv[]) {
                 }
             } else {
                 char report[256];
-                sprintf(report, "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)\n", id, group->route, group->size);
-                if (write(fifo_fd, report, strlen(report)) == -1) {
-                    report_error("[PRZEWODNIK] Błąd write FIFO");
+                int written = snprintf(report, sizeof(report), "Przewodnik %d zakończył wycieczkę (trasa %d, %d osób)\n", id, group->route, group->size);
+                if (written < 0) {
+                    report_error("[PRZEWODNIK] Błąd snprintf (raport zakończenia)");
+                } else {
+                    size_t report_len = (size_t)written;
+                    if (report_len >= sizeof(report)) {
+                        report_len = sizeof(report) - 1;
+                    }
+                    if (write(fifo_fd, report, report_len) == -1) {
+                        report_error("[PRZEWODNIK] Błąd write FIFO");
+                    }
                 }
                 if (close(fifo_fd) == -1) {
                     report_error("[PRZEWODNIK] Błąd close FIFO");

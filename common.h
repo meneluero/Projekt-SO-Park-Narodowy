@@ -375,12 +375,16 @@ static inline int sem_timed_wait(int sem_id, int sem_num, int seconds,volatile s
     op.sem_flg = 0;
 
     struct timespec deadline;
-    clock_gettime(CLOCK_MONOTONIC, &deadline);
+    if (clock_gettime(CLOCK_MONOTONIC, &deadline) == -1) {
+        fatal_error("Błąd clock_gettime (deadline)");
+    }
     deadline.tv_sec += seconds;
 
     while (1) {
         struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+            fatal_error("Błąd clock_gettime (now)");
+        }
 
         struct timespec remaining;
         remaining.tv_sec = deadline.tv_sec - now.tv_sec;
@@ -545,15 +549,30 @@ static inline void sim_sleep(int min_us, int max_us, int has_young_children) {
         duration = (int)(duration * 1.5);
     }
     if (duration > 0) {
-        usleep(duration);
+        if (usleep(duration) == -1) {
+            report_error("Błąd usleep");
+        }
     }
 }
 
 // pobranie aktualnego czasu jako string
 static inline void get_timestamp(char *buffer, size_t size) {
     time_t now = time(NULL);
+    if (now == (time_t)-1) {
+        report_error("Błąd time");
+        snprintf(buffer, size, "??:??:??");
+        return;
+    }
     struct tm *t = localtime(&now);
-    strftime(buffer, size, "%H:%M:%S", t);
+    if (t == NULL) {
+        report_error("Błąd localtime");
+        snprintf(buffer, size, "??:??:??");
+        return;
+    }
+    if (strftime(buffer, size, "%H:%M:%S", t) == 0) {
+        report_error("Błąd strftime");
+        snprintf(buffer, size, "??:??:??");
+    }
 }
 
 // ustalenie atrakcji dla danego kroku trasy

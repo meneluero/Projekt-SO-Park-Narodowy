@@ -85,14 +85,27 @@ int main(int argc, char* argv[]) {
     {
         time_t closing = park->park_closing_time;
         struct tm *ct = localtime(&closing);
-        char time_buf[32];
-        strftime(time_buf, sizeof(time_buf), "%H:%M:%S", ct);
-        printf(CLR_YELLOW "[KASJER %d] Park zamyka się o %s" CLR_RESET "\n", id, time_buf);
+        if (ct == NULL) {
+            report_error("[KASJER] Błąd localtime");
+            printf(CLR_YELLOW "[KASJER %d] Park zamyka się o [czas niedostępny]" CLR_RESET "\n", id);
+        } else {
+            char time_buf[32];
+            if (strftime(time_buf, sizeof(time_buf), "%H:%M:%S", ct) == 0) {
+                report_error("[KASJER] Błąd strftime");
+                printf(CLR_YELLOW "[KASJER %d] Park zamyka się o [czas niedostępny]" CLR_RESET "\n", id);
+            } else {
+                printf(CLR_YELLOW "[KASJER %d] Park zamyka się o %s" CLR_RESET "\n", id, time_buf);
+            }
+        }
     }
 
     char start_msg[256];
-    snprintf(start_msg, sizeof(start_msg), "[KASJER %d] Rozpoczęcie pracy\n", id);
-    write_log(start_msg);
+    int written = snprintf(start_msg, sizeof(start_msg), "[KASJER %d] Rozpoczęcie pracy\n", id);
+    if (written < 0) {
+        report_error("[KASJER] Błąd snprintf (start_msg)");
+    } else {
+        write_log(start_msg);
+    }
 
     // utworzenie procesu potomnego do obslugi logow z fifo (raporty przewodnikow)
     pid_t fifo_pid = fork();
@@ -122,8 +135,12 @@ int main(int argc, char* argv[]) {
                 printf(CLR_YELLOW "[KASJER %d] Raport z FIFO: %s" CLR_RESET "\n", id, line);
 
                 char log_fifo[256];
-                snprintf(log_fifo, sizeof(log_fifo), "[KASJER %d] Raport FIFO: %s\n", id, line);
-                write_log(log_fifo);
+                int fifo_written = snprintf(log_fifo, sizeof(log_fifo), "[KASJER %d] Raport FIFO: %s\n", id, line);
+                if (fifo_written < 0) {
+                    report_error("[KASJER] Błąd snprintf (log_fifo)");
+                } else {
+                    write_log(log_fifo);
+                }
 
                 line = strtok(NULL, "\n");
             }
@@ -164,14 +181,19 @@ int main(int argc, char* argv[]) {
 
             // obsluga wejscia turysty
             if (message.msg_type == MSG_TYPE_ENTRY) {
+                int msg_written;
                 if (message.is_vip) {
-                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] VIP [T %d | PID %d] (wiek: %d) - wejście bezpłatne\n", id, message.tourist_id, message.tourist_pid, message.age);
+                    msg_written = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] VIP [T %d | PID %d] (wiek: %d) - wejście bezpłatne\n", id, message.tourist_id, message.tourist_pid, message.age);
                 } else if (message.age < 7) {
-                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] (wiek: %d) - dziecko, bilet bezpłatny\n", id, message.tourist_id, message.tourist_pid, message.age);
+                    msg_written = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] (wiek: %d) - dziecko, bilet bezpłatny\n", id, message.tourist_id, message.tourist_pid, message.age);
                 } else {
-                    snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] (wiek: %d) - bilet normalny\n", id, message.tourist_id, message.tourist_pid, message.age);
+                    msg_written = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] (wiek: %d) - bilet normalny\n", id, message.tourist_id, message.tourist_pid, message.age);
                 }
-                write_log(log_msg);
+                if (msg_written < 0) {
+                    report_error("[KASJER] Błąd snprintf (log_msg entry)");
+                } else {
+                    write_log(log_msg);
+                }
 
                 // aktualizacja statystyk wejsc
                 sem_lock(sem_id, SEM_STATS_MUTEX);
@@ -181,11 +203,18 @@ int main(int argc, char* argv[]) {
                 sem_unlock(sem_id, SEM_STATS_MUTEX);
 
                 // sprawdzenie czasu zamkniecia parku
-                if (!park->park_closed && time(NULL) >= park->park_closing_time) {
+                time_t current_time = time(NULL);
+                if (current_time == (time_t)-1) {
+                    report_error("[KASJER] Błąd time");
+                } else if (!park->park_closed && current_time >= park->park_closing_time) {
                     park->park_closed = 1;
                     char close_msg[256];
-                    snprintf(close_msg, sizeof(close_msg), "[KASJER %d] Park zamknięty (Tk)! Brak nowych wejść.\n", id);
-                    write_log(close_msg);
+                    int close_written = snprintf(close_msg, sizeof(close_msg), "[KASJER %d] Park zamknięty (Tk)! Brak nowych wejść.\n", id);
+                    if (close_written < 0) {
+                        report_error("[KASJER] Błąd snprintf (close_msg)");
+                    } else {
+                        write_log(close_msg);
+                    }
                     printf(CLR_BG_RED CLR_WHITE "[KASJER %d] GODZINA ZAMKNIĘCIA (Tk)! Kasa zamknięta dla nowych klientów." CLR_RESET "\n", id);
                 }
 
@@ -206,8 +235,12 @@ int main(int argc, char* argv[]) {
             } else if (message.msg_type == MSG_TYPE_EXIT) {
                 // obsluga wyjscia turysty
                 printf(CLR_YELLOW "[KASJER %d] [T %d | PID %d] - wyjście z parku" CLR_RESET "\n", id, message.tourist_id, message.tourist_pid);
-                snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] - wyjście (czas w parku: %s)\n", id, message.tourist_id, message.tourist_pid, message.info);
-                write_log(log_msg);
+                int exit_written = snprintf(log_msg, sizeof(log_msg), "[KASJER %d] [T %d | PID %d] - wyjście (czas w parku: %s)\n", id, message.tourist_id, message.tourist_pid, message.info);
+                if (exit_written < 0) {
+                    report_error("[KASJER] Błąd snprintf (log_msg exit)");
+                } else {
+                    write_log(log_msg);
+                }
 
                 sem_lock(sem_id, SEM_STATS_MUTEX);
                 park->total_exited++;

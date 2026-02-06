@@ -160,8 +160,14 @@ int get_input(const char* prompt, int min, int max) {
             }
         } else {
             printf(CLR_RED "Błąd: To nie jest liczba!" CLR_RESET "\n");
-            while (getchar() != '\n'); // czyszczenie bufora wejscia
-
+            int ch;
+            while ((ch = getchar()) != '\n' && ch != EOF) {
+                // czyszczenie bufora wejscia
+            }
+            if (ch == EOF) {
+                report_error("[MAIN] Błąd getchar podczas czyszczenia bufora");
+                clearerr(stdin);
+            }
         }
     }
 }
@@ -358,6 +364,9 @@ void init_shared_memory(struct ParkSharedMemory *park, int num_tourists, int par
     memset(park, 0, sizeof(struct ParkSharedMemory));
 
     park->park_open_time = time(NULL);
+    if (park->park_open_time == (time_t)-1) {
+        fatal_error("[MAIN] Błąd time (park_open_time)");
+    }
     park->park_closing_time = park->park_open_time + park_duration;
     park->park_closed = 0;
 
@@ -577,7 +586,10 @@ int main() {
         if (pid == 0) {
 
             char id_buff[16];
-            sprintf(id_buff, "%d", i);
+            int written = snprintf(id_buff, sizeof(id_buff), "%d", i);
+            if (written < 0 || written >= (int)sizeof(id_buff)) {
+                fatal_error("[MAIN] Błąd snprintf (id przewodnika)");
+            }
             execl("./przewodnik", "przewodnik", id_buff, NULL);
             fatal_error("[MAIN] Błąd execl przewodnik");
         }
@@ -588,7 +600,13 @@ int main() {
 
     printf(CLR_WHITE "[MAIN] Rozpoczynam generowanie %d turystów..." CLR_RESET "\n", num_tourists);
 
-    srand(time(NULL));
+    time_t seed_time = time(NULL);
+    if (seed_time == (time_t)-1) {
+        report_error("[MAIN] Błąd time (srand seed)");
+        srand(0); // użyj domyślnego seed'a
+    } else {
+        srand(seed_time);
+    }
 
     int created_tourists = 0;
     int finished_tourists = 0;
@@ -599,7 +617,10 @@ int main() {
     for (int i = 1; i <= num_tourists; i++) {
 
         // sprawdzenie czasu zamkniecia parku
-        if (!park->park_closed && time(NULL) >= park->park_closing_time) {
+        time_t check_time = time(NULL);
+        if (check_time == (time_t)-1) {
+            report_error("[MAIN] Błąd time (sprawdzenie zamknięcia parku)");
+        } else if (!park->park_closed && check_time >= park->park_closing_time) {
             printf(CLR_YELLOW "\n[MAIN] Park zamknięty! Nowi turyści będą odrzucani." CLR_RESET "\n");
             park->park_closed = 1;
         }
@@ -643,7 +664,10 @@ int main() {
 
         if (pid == 0) {
             char id_buff[16];
-            sprintf(id_buff, "%d", i);
+            int written = snprintf(id_buff, sizeof(id_buff), "%d", i);
+            if (written < 0 || written >= (int)sizeof(id_buff)) {
+                fatal_error("[MAIN-CHILD] Błąd snprintf (id turysty)");
+            }
             execl("./turysta", "turysta", id_buff, NULL);
             fatal_error("[MAIN-CHILD] Błąd execl turysta");
         }
@@ -723,12 +747,29 @@ int main() {
     {
         time_t open_t = park->park_open_time;
         time_t close_t = park->park_closing_time;
+        char open_buf[32] = "??:??:??";
+        char close_buf[32] = "??:??:??";
+
         struct tm *ot = localtime(&open_t);
-        char open_buf[32];
-        strftime(open_buf, sizeof(open_buf), "%H:%M:%S", ot);
+        if (ot == NULL) {
+            report_error("[MAIN] Błąd localtime (park_open_time)");
+        } else {
+            if (strftime(open_buf, sizeof(open_buf), "%H:%M:%S", ot) == 0) {
+                report_error("[MAIN] Błąd strftime (park_open_time)");
+                strcpy(open_buf, "??:??:??");
+            }
+        }
+
         struct tm *clt = localtime(&close_t);
-        char close_buf[32];
-        strftime(close_buf, sizeof(close_buf), "%H:%M:%S", clt);
+        if (clt == NULL) {
+            report_error("[MAIN] Błąd localtime (park_closing_time)");
+        } else {
+            if (strftime(close_buf, sizeof(close_buf), "%H:%M:%S", clt) == 0) {
+                report_error("[MAIN] Błąd strftime (park_closing_time)");
+                strcpy(close_buf, "??:??:??");
+            }
+        }
+
         printf(CLR_WHITE "Godzina otwarcia (Tp):   %s" CLR_RESET "\n", open_buf);
         printf(CLR_WHITE "Godzina zamknięcia (Tk): %s" CLR_RESET "\n", close_buf);
         printf(CLR_WHITE "Czas otwarcia:           %d sekund" CLR_RESET "\n", park_duration);
