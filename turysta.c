@@ -82,6 +82,43 @@ static void wake_guides_for_queue(int sem_id, struct ParkSharedMemory *park, int
     wake_guides_for_count(sem_id, in_queue, allow_partial);
 }
 
+// ponowne sprawdzenie Tk tuz przed wejsciem (minimalna korekta)
+static int reject_if_closed_late(int id, int sem_id, struct ParkSharedMemory *park, int release_queue_slot) {
+    time_t check_time = time(NULL);
+    if (check_time == (time_t)-1) {
+        report_error(tourist_error_ctx("Błąd time (sprawdzenie zamknięcia parku)"));
+        check_time = park->park_closing_time; // zaloz ze park zamkniety w przypadku bledu
+    }
+
+    if (park->park_closed || check_time >= park->park_closing_time) {
+        printf(CLR_YELLOW "[T %d | PID %d] Park zamknięty (Tk). Odchodzę." CLR_RESET "\n", id, getpid());
+        if (fflush(stdout) == EOF) {
+            report_error(tourist_error_ctx("Błąd fflush (park zamknięty)"));
+        }
+
+        if (release_queue_slot) {
+            sem_unlock(sem_id, SEM_QUEUE_SLOTS);
+        }
+
+        sem_lock(sem_id, SEM_STATS_MUTEX);
+        if (park->daily_entered_count > 0) {
+            park->daily_entered_count--;
+        }
+        park->rejected_after_close++;
+        park->total_expected--;
+        if (park->total_exited >= park->total_expected) {
+            sem_unlock(sem_id, SEM_ALL_DONE);
+        }
+        sem_unlock(sem_id, SEM_STATS_MUTEX);
+
+        if (shmdt(park) == -1) {
+            report_error(tourist_error_ctx("Błąd shmdt"));
+        }
+        return 1;
+    }
+    return 0;
+}
+
 // procedura wejscia do parku, aktualizacji statystyk i wyslania komunikatu
 static void enter_park_and_report(int id, int age, int is_vip, int sem_id, int msg_id, struct ParkSharedMemory *park) {
     sem_lock(sem_id, SEM_STATS_MUTEX);
@@ -746,6 +783,9 @@ int main(int argc, char* argv[]) {
 
     // sciezka dla vipow zwiedzajacych samotnie
     if (vip_can_go_solo) {
+        if (reject_if_closed_late(id, sem_id, park, 0)) {
+            return 0;
+        }
         printf(CLR_MAGENTA "[T %d | PID %d] VIP: wejście bezpłatne, pomijam kasę." CLR_RESET "\n", id, getpid());
         enter_park_and_report(id, age, is_vip, sem_id, msg_id, park);
         printf(CLR_GREEN "[T %d | PID %d] Wszedłem do parku! Idę do punktu zbiórki." CLR_RESET "\n", id, getpid());
@@ -822,6 +862,10 @@ int main(int argc, char* argv[]) {
     if (sem_lock_interruptible(sem_id, SEM_QUEUE_SLOTS, &emergency_exit_flag) == -1) {
         printf(CLR_RED "[T %d | PID %d] Ewakuacja przed wejściem do kolejki!" CLR_RESET "\n", id, getpid());
         goto cleanup;
+    }
+
+    if (reject_if_closed_late(id, sem_id, park, 1)) {
+        return 0;
     }
 
     g_has_queue_slot = 1;
