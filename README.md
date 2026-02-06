@@ -1,4 +1,4 @@
-# Raport z projektu: Symulacja Parku Narodowego
+# Raport z projektu: Symulacja Parku Narodowego (Temat 7)
 
 ## Spis treści
 
@@ -22,68 +22,73 @@
 
 | Parametr | Wartość | Opis |
 |----------|---------|------|
-| N_PARK_CAPACITY | 500 | Maksymalna liczba osób w parku |
+| N (daily_visitor_limit) | Podawane przez użytkownika (1–30 000) | Dzienny limit osób w parku |
 | M_GROUP_SIZE | 10 | Wielkość grupy turystycznej |
-| X1_BRIDGE_CAP | 9 | Pojemność mostu (X1 < M) |
-| X2_TOWER_CAP | 18 | Pojemność wieży (X2 < 2M) |
+| X1_BRIDGE_CAP | 9 | Pojemność mostu wiszącego (X1 < M) |
+| X2_TOWER_CAP | 18 | Pojemność wieży widokowej (X2 < 2M) |
 | X3_FERRY_CAP | 12 | Pojemność promu (X3 < 1.5*M) |
-| MAX_GROUPS | 15 | Maksymalna liczba aktywnych grup |
+| MAX_GROUPS | 15 | Maksymalna liczba jednoczesnych grup |
 | TICKET_PRICE | 50 | Cena biletu w PLN |
+| P (num_guides) | Podawane przez użytkownika (1–15) | Liczba przewodników |
+| N_PARK_CAPACITY | 500 | Pojemność wewnętrznej kolejki/slotów turystów |
 
 ### 1.2. Założenia funkcjonalne
 
-1. **Godziny otwarcia**: Park działa od czasu Tp (uruchomienie) do Tk (podany przez użytkownika czas w sekundach).
+1. **Godziny otwarcia**: Park działa od Tp (moment uruchomienia) do Tk (Tp + czas podany przez użytkownika w sekundach). Po Tk nowi turyści są odrzucani.
 
-2. **Wejście do parku**:
-   - Dzieci poniżej 7 lat - wejście bezpłatne
-   - VIP (5% szans) - wejście bezpłatne z pominięciem kolejki
-   - Pozostali - bilet płatny (50 PLN)
+2. **Limit dzienny N**: Do parku w danym dniu może wejść co najwyżej N osób. Po osiągnięciu limitu kolejni turyści są odrzucani.
 
-3. **Zwiedzanie**:
-   - VIP ≥15 lat może zwiedzać samodzielnie
-   - Pozostali zwiedzają w grupach M-osobowych pod opieką przewodnika
-   - Dzieci <15 lat wymagają opiekuna (dorosły z grupy lub przewodnik)
+3. **Wejście do parku**:
+   - Dzieci poniżej 7 lat — wejście bezpłatne
+   - VIP (5% szans, legitymacja PTTK) — wejście bezpłatne z pominięciem kolejki do kasy
+   - Pozostali — bilet płatny (50 PLN), przechodzą przez kolejkę kasową
 
-4. **Trasy**:
-   - Trasa 1: Kasa → Most → Wieża → Prom → Kasa
-   - Trasa 2: Kasa → Prom → Wieża → Most → Kasa
-   - Wybór trasy jest losowy dla każdej grupy
+4. **Zwiedzanie**:
+   - VIP ≥ 15 lat może zwiedzać park samodzielnie (bez grupy)
+   - Pozostali zwiedzają w M-osobowych grupach pod opieką przewodnika
+   - Dzieci < 15 lat wymagają opiekuna (dorosły ≥ 18 lat z grupy; w razie braku — przewodnik)
 
-5. **Wydłużenie czasu**: Jeśli w grupie są dzieci <12 lat, czas przejścia między atrakcjami jest wydłużony o 50%.
+5. **Trasy** (losowy wybór):
+   - Trasa 1: Kasa → Most (A) → Wieża (B) → Prom (C) → Kasa
+   - Trasa 2: Kasa → Prom (C) → Wieża (B) → Most (A) → Kasa
+
+6. **Wydłużenie czasu**: Jeśli w grupie są dzieci < 12 lat, czas przejścia między atrakcjami jest wydłużony o 50%.
 
 ### 1.3. Zasady atrakcji
 
 #### Most wiszący (A)
 
-- Maksymalnie X1=9 osób jednocześnie
-- Ruch jednokierunkowy w danej chwili
-- Przewodnik wchodzi pierwszy (jeśli nikt nie idzie z przeciwnej strony)
-- Na moście mogą być turyści z różnych grup idących w tym samym kierunku
-- Dzieci <15 lat wchodzą pod opieką dorosłego
-- VIP czeka w kolejce jak pozostali
+- Maksymalnie X1 = 9 osób jednocześnie
+- Ruch jednokierunkowy — w danej chwili wszyscy idą w tym samym kierunku
+- Przewodnik wchodzi pierwszy i ustala kierunek (pod warunkiem, że nikt nie idzie z drugiej strony)
+- Na moście mogą znajdować się turyści z kilku grup idących w tym samym kierunku
+- Po przejściu przewodnik czeka na drugiej stronie, aż wszyscy z jego grupy przejdą
+- Dzieci < 15 lat wchodzą pod opieką osoby dorosłej
+- VIP czeka w kolejce jak wszyscy (brak priorytetu na moście)
 
 #### Wieża widokowa (B)
 
-- Maksymalnie X2=18 osób jednocześnie
-- Dwie klatki schodowe (jedna do wchodzenia, druga do schodzenia)
-- Przewodnik NIE wchodzi na wieżę - czeka na dole
-- Dzieci ≤5 lat i ich opiekunowie nie mogą wejść
-- Dzieci <15 lat wchodzą pod opieką dorosłego
+- Maksymalnie X2 = 18 osób jednocześnie
+- Dwie klatki schodowe — jedną się wchodzi, drugą schodzi
+- Przewodnik NIE wchodzi na wieżę — czeka na dole, aż wszyscy z grupy zejdą
+- Dzieci ≤ 5 lat i ich opiekunowie nie mogą wejść na wieżę
+- Dzieci < 15 lat wchodzą pod opieką osoby dorosłej
 - VIP omija kolejkę
-- Na sygnał SIGUSR1 turyści natychmiast schodzą z wieży
+- Na sygnał SIGUSR1 (wydany przez przewodnika) turyści będący na wieży natychmiast z niej schodzą
 
 #### Prom (C)
 
-- Maksymalnie X3=12 osób jednocześnie
-- Kursuje w obie strony
-- Przewodnik wchodzi pierwszy, potem członkowie grupy
-- Na promie mogą być turyści z różnych grup
-- Dzieci <15 lat wchodzą pod opieką dorosłego
+- Maksymalnie X3 = 12 osób jednocześnie
+- Kursuje w obie strony, pokonanie rzeki w jedną stronę zajmuje losowy czas
+- Przewodnik wchodzi na prom jako pierwszy, potem członkowie grupy
+- Na promie mogą znajdować się turyści z kilku grup
+- Po zejściu z promu przewodnik czeka, aż wszyscy z grupy przepłyną
+- Dzieci < 15 lat wchodzą pod opieką osoby dorosłej
 - VIP omija kolejkę
 
-#### Ewakuacja awaryjna
+#### Ewakuacja awaryjna (sygnał2)
 
-- Na sygnał SIGUSR2 turyści z grupy natychmiast wracają do kasy
+- Na SIGUSR2 wydany przez przewodnika turyści z grupy natychmiast wracają do kasy, omijając wszystkie atrakcje
 
 ---
 
@@ -91,173 +96,90 @@
 
 ### 2.1. Architektura systemu
 
-System składa się z 5 plików źródłowych:
+Program napisany w C, składa się z 5 plików źródłowych i pliku Makefile:
 
 | Plik | Opis |
 |------|------|
-| common.h | Nagłówek wspólny - stałe, struktury, funkcje inline |
-| main.c | Proces główny - inicjalizacja i zarządzanie |
-| kasjer.c | Proces kasjera - obsługa wejść/wyjść i logów |
-| przewodnik.c | Procesy przewodników - prowadzenie grup |
-| turysta.c | Procesy turystów - zwiedzanie parku |
+| `common.h` | Nagłówek wspólny — stałe, struktury danych, funkcje inline |
+| `main.c` | Proces główny — inicjalizacja IPC, zarządzanie procesami, cleanup |
+| `kasjer.c` | Proces kasjera — rejestracja wejść/wyjść, logowanie do pliku |
+| `przewodnik.c` | Procesy przewodników — tworzenie i prowadzenie grup |
+| `turysta.c` | Procesy turystów — zwiedzanie parku, reakcja na sygnały |
+| `Makefile` | Kompilacja (`make all`), uruchomienie (`make run`), czyszczenie (`make clean`) |
 
-### 2.2. Schemat działania
+Symulacja działa na procesach — obowiązkowe użycie `fork()` i `exec()`. Każdy turysta, przewodnik i kasjer to osobny proces uruchamiany przez `fork()` + `execl()`.
 
-#### Hierarchia procesów
+### 2.2. Hierarchia procesów
 
-System działa w oparciu o następującą hierarchię procesów:
+```
+MAIN (main.c)
+├── KASJER (kasjer.c) — 1 proces
+│   └── KASJER-FIFO (kasjer.c fork) — 1 proces potomny do obsługi FIFO
+├── PRZEWODNIK-REPORTER (przewodnik.c tryb "reporter") — 1 proces
+├── PRZEWODNIK 1..P (przewodnik.c) — P procesów
+└── TURYSTA 1..N (turysta.c) — N procesów (generowane w pętli)
+```
 
-1. **MAIN (main.c)** - proces nadrzędny
-   - Tworzy wszystkie zasoby IPC
-   - Uruchamia procesy potomne przez fork() + exec()
-   - Generuje procesy turystów
-   - Czeka na zakończenie symulacji
-   - Wykonuje cleanup
+### 2.3. Komunikacja między procesami
 
-2. **KASJER (kasjer.c)** - 1 proces
-   - Odbiera komunikaty o wejściach/wyjściach
-   - Zapisuje logi do pliku
-   - Posiada proces potomny do obsługi FIFO
+| Nadawca | Odbiorca | Mechanizm | Dane | Cel |
+|---------|----------|-----------|------|-----|
+| Turysta | Kasjer | Kolejka komunikatów (MSG_TYPE_ENTRY) | ID, PID, wiek, VIP | Rejestracja wejścia |
+| Turysta (VIP solo) | Reporter | Kolejka komunikatów (MSG_TYPE_EXIT_NOTICE) | ID, PID, wiek, VIP | Powiadomienie o wyjściu |
+| Reporter | Kasjer | Kolejka komunikatów (MSG_TYPE_EXIT) | ID, PID, wiek, VIP | Przekazanie rejestracji wyjścia |
+| Przewodnik | Kasjer | Kolejka komunikatów (MSG_TYPE_EXIT) | lista turystów | Raport wyjść grupy |
+| Przewodnik | Kasjer-FIFO | FIFO (named pipe) | tekst raportu | Raport z wycieczki / awarii |
+| Przewodnik | Turysta | Sygnał SIGUSR1 | — | Ewakuacja z wieży |
+| Przewodnik | Turysta | Sygnał SIGUSR2 | — | Ewakuacja ogólna |
+| Main | Kasjer | Sygnał SIGTERM | — | Zakończenie pracy |
+| Main | Reporter | Sygnał SIGTERM | — | Zakończenie pracy |
+| Main | Wszystkie | Sygnał SIGTERM (kill(0, SIGTERM)) | — | Cleanup przy wyjściu |
 
-3. **PRZEWODNIK (przewodnik.c)** - P procesów
-   - Tworzy i prowadzi grupy turystyczne
-   - Synchronizuje przejście przez atrakcje
-   - Wysyła sygnały ewakuacji
+### 2.4. Współdzielone zasoby
 
-4. **PRZEWODNIK-REPORTER (przewodnik.c)** - 1 proces
-   - Specjalny tryb przewodnika
-   - Przekazuje powiadomienia o wyjściach do kasjera
+**Pamięć dzielona** (`struct ParkSharedMemory`) przechowuje:
+- Stan parku (czas otwarcia/zamknięcia, flagi zamknięcia, limit dzienny)
+- Statystyki (liczba wejść, wyjść, przychód, bilety płatne/darmowe)
+- Kolejkę wejściową turystów (tablica cykliczna z head/tail)
+- Stany wszystkich grup (`struct GroupState[MAX_GROUPS]`)
+- Stany atrakcji (most — kierunek i liczniki; wieża — licznik i lista odwiedzających; prom — kierunek, liczniki, kolejki VIP/normalne)
 
-5. **TURYSTA (turysta.c)** - N procesów
-   - Symuluje zachowanie turysty
-   - Reaguje na sygnały ewakuacji
+**Semafory System V** (jeden zestaw `TOTAL_SEMAPHORES` semaforów) służą do:
+- Wzajemnego wykluczania (mutexy: kolejka, statystyki, most, wieża, prom, grupy, kasa)
+- Ograniczania dostępu (limity pojemności: most, wieża, prom, schody w górę/w dół, kolejka, kasa)
+- Synchronizacji grup (SEM_MEMBER_GO, SEM_GROUP_DONE, SEM_TOURIST_ASSIGNED, SEM_TOURIST_READ_DONE)
+- Kolejkowania kierunkowego (SEM_BRIDGE_WAIT, SEM_FERRY_WAIT, SEM_FERRY_VIP_WAIT)
+- Kolejkowania na wieżę (SEM_TOWER_VIP_WAIT, SEM_TOWER_NORMAL_WAIT)
+- Synchronizacji z przewodnikiem (SEM_BRIDGE_GUIDE_READY, SEM_FERRY_GUIDE_READY)
+- Sygnalizacji zdarzeń (SEM_PRZEWODNIK, SEM_ALL_DONE)
+  
+W `sem_lock/sem_unlock/sem_trylock` dla wybranych mutexów i semaforów pojemności używany jest `SEM_UNDO`, aby procesy nie blokowały się po awarii.
 
-#### Komunikacja między procesami
+### 2.5. Cykl życia turysty
 
-| Nadawca | Odbiorca | Mechanizm | Typ wiadomości | Cel |
-|---------|----------|-----------|----------------|-----|
-| Turysta | Kasjer | Kolejka komunikatów | MSG_TYPE_ENTRY | Rejestracja wejścia |
-| Turysta | Reporter | Kolejka komunikatów | MSG_TYPE_EXIT_NOTICE | Powiadomienie o wyjściu |
-| Reporter | Kasjer | Kolejka komunikatów | MSG_TYPE_EXIT | Rejestracja wyjścia |
-| Przewodnik | Kasjer | FIFO | Tekst | Raport z wycieczki |
-| Przewodnik | Turysta | Sygnał SIGUSR1 | - | Ewakuacja z wieży |
-| Przewodnik | Turysta | Sygnał SIGUSR2 | - | Ewakuacja ogólna |
-| Main | Kasjer | Sygnał SIGTERM | - | Zakończenie pracy |
-| Main | Przewodnik | Sygnał SIGTERM | - | Zakończenie pracy |
-
-#### Współdzielone zasoby
-
-**Pamięć dzielona** przechowuje:
-- Stan parku (czas otwarcia/zamknięcia, flaga zamknięcia)
-- Statystyki (liczba wejść, wyjść, przychód)
-- Kolejkę wejściową turystów (tablica cykliczna)
-- Stany wszystkich grup (tablica GroupState)
-- Stany atrakcji (most, wieża, prom)
-
-**Semafory** służą do:
-- Wzajemnego wykluczania (mutexy dla kolejki, statystyk, atrakcji)
-- Ograniczania dostępu (limity pojemności parku, mostu, wieży, promu)
-- Synchronizacji grup (oczekiwanie na zakończenie atrakcji)
-- Kolejkowania (oczekiwanie na zmianę kierunku mostu/promu)
-
-#### Cykl życia turysty
-
-1. **Inicjalizacja**: Losowanie atrybutów (wiek, VIP)
-2. **Sprawdzenie dostępności**: Czy park jest otwarty?
-3. **Ścieżka VIP solo** (jeśli VIP ≥15 lat):
-   - Pominięcie kolejki
-   - Samodzielne zwiedzanie wszystkich atrakcji
-   - Powrót do kasy
+1. **Inicjalizacja**: losowanie atrybutów (wiek 3–70, VIP 5%)
+2. **Sprawdzenie dostępności**: park otwarty? limit dzienny N nie przekroczony?
+3. **Ścieżka VIP solo** (VIP ≥ 15 lat): pominięcie kolejki, samodzielne zwiedzanie 3 atrakcji, powrót do kasy
 4. **Ścieżka grupowa** (pozostali):
-   - Kolejka do kasy (płatność dla nie-VIP ≥7 lat)
-   - Kolejka grupowa (oczekiwanie na M osób)
-   - Przypisanie do grupy przez przewodnika
-   - Oczekiwanie na start wycieczki
-   - Zwiedzanie 3 atrakcji według trasy
-   - Powrót do kasy z grupą
-5. **Zakończenie**: Zgłoszenie wyjścia, zwolnienie zasobów
+   - Kolejka do kasy (nie-VIP) → opłata biletu
+   - Wejście do kolejki grupowej → oczekiwanie na M osób
+   - Przypisanie do grupy przez przewodnika (SEM_TOURIST_ASSIGNED)
+   - Potwierdzenie odczytu (SEM_TOURIST_READ_DONE)
+   - Oczekiwanie na start (SEM_MEMBER_GO)
+   - Zwiedzanie 3 atrakcji wg trasy z synchronizacją (SEM_GROUP_DONE)
+   - Powrót do kasy
+5. **Zakończenie**: VIP solo wysyła powiadomienie o wyjściu (do reportera), turyści grupowi są raportowani przez przewodnika; aktualizacja statystyk, shmdt
 
-#### Cykl życia przewodnika
+### 2.6. Cykl życia przewodnika
 
-1. **Oczekiwanie**: Czeka na semaforze SEM_PRZEWODNIK
-2. **Tworzenie grupy**:
-   - Zajmuje slot grupy
-   - Pobiera turystów z kolejki
-   - Przydziela opiekunów dla dzieci <15 lat
-   - Losuje trasę (1 lub 2)
-3. **Prowadzenie wycieczki**:
-   - Budzi turystów (SEM_MEMBER_GO)
-   - Dla każdej z 3 atrakcji:
-     - Most/Prom: wchodzi jako pierwszy, wpuszcza grupę
-     - Wieża: czeka na dole
-     - Czeka na zakończenie przez wszystkich (SEM_GROUP_DONE)
-4. **Zakończenie**:
-   - Raportuje do kasy i FIFO
-   - Zwalnia slot grupy
-   - Wraca do kroku 1
-
-#### Logika atrakcji
-
-**Most wiszący:**
-- Ruch jednokierunkowy - w danej chwili wszyscy idą w tym samym kierunku
-- Przewodnik wchodzi pierwszy, ustala kierunek
-- Gdy most pusty, kierunek może się zmienić
-- Priorytet dla czekających z przeciwnej strony (po opróżnieniu mostu)
-- VIP nie ma priorytetu (czeka jak wszyscy)
-
-**Wieża widokowa:**
-- Przewodnik nie wchodzi - czeka na dole
-- Ograniczenia wiekowe: dzieci ≤5 lat nie wchodzą, ich opiekunowie też
-- VIP ma priorytet - omija kolejkę zwykłych turystów
-- Na sygnał SIGUSR1 turyści natychmiast schodzą
-- Osobne semafory dla schodów w górę i w dół
-
-**Prom:**
-- Przewodnik wchodzi pierwszy, ustala kierunek
-- VIP ma priorytet - omija kolejkę zwykłych turystów
-- Po opróżnieniu promu priorytet dla czekających z przeciwnej strony
-- Może przewozić turystów z różnych grup (w tym samym kierunku)
-
-#### Obsługa sytuacji specjalnych
-
-**Zamknięcie parku (czas Tk):**
-- Nowi turyści są odrzucani
-- Turyści w kolejce tworzą niepełną grupę
-- Przewodnik jest budzony dla niepełnej grupy
-
-**Ewakuacja z wieży (SIGUSR1):**
-- Ustawia flagę tower_evacuation_flag
-- Przerywa sem_timed_wait na wieży
-- Turysta natychmiast schodzi
-
-**Ewakuacja ogólna (SIGUSR2):**
-- Ustawia flagę emergency_exit_flag
-- Przerywa wszystkie sem_lock_interruptible
-- Turysta pomija pozostałe atrakcje i wraca do kasy
-
-**Brak opiekuna dla dziecka:**
-- Przewodnik przejmuje rolę opiekuna
-- Dziecko może zwiedzać, ale przewodnik nie wchodzi na wieżę
-- Dziecko pod opieką przewodnika nie wchodzi na wieżę
-
-**Losowe awarie (2% szans):**
-- Przed startem wycieczki lub między atrakcjami
-- Przewodnik wysyła SIGUSR2 do całej grupy
-- Raportuje awarię przez FIFO
-
-### 2.3. Przepływ danych
-
-**Wejście turysty:**
-
-TURYSTA wysyła MSG_TYPE_ENTRY do KASJER, który zapisuje do park_log.txt
-
-**Wyjście turysty:**
-
-TURYSTA wysyła MSG_TYPE_EXIT_NOTICE do PRZEWODNIK-RAPORTER, który przekazuje MSG_TYPE_EXIT do KASJER
-
-**Raporty przewodników:**
-
-PRZEWODNIK zapisuje przez FIFO do KASJER (proces potomny obsługujący FIFO)
+1. **Oczekiwanie** na semaforze SEM_PRZEWODNIK
+2. **Tworzenie grupy**: zajęcie slotu (SEM_GROUP_SLOTS), pobranie turystów z kolejki, przydzielenie opiekunów, losowanie trasy
+3. **Prowadzenie wycieczki**: budzenie turystów (SEM_MEMBER_GO), dla każdej atrakcji:
+   - Most: wchodzi jako pierwszy, ustala kierunek
+   - Wieża: czeka na dole
+   - Prom: wchodzi jako pierwszy
+   - Czekanie na SEM_GROUP_DONE od wszystkich turystów
+4. **Zakończenie**: raport do kasy (kolejka komunikatów) i FIFO, zwolnienie slotu
 
 ---
 
@@ -265,476 +187,261 @@ PRZEWODNIK zapisuje przez FIFO do KASJER (proces potomny obsługujący FIFO)
 
 ### 3.1. common.h
 
-Plik nagłówkowy zawierający wszystkie wspólne definicje.
+Plik nagłówkowy zawierający wszystkie wspólne definicje:
 
-#### Stałe konfiguracyjne
+**Stałe konfiguracyjne** — limity pojemności, czasy trwania atrakcji, fazy zwiedzania, identyfikatory atrakcji i kierunków.
 
-```c
-#define N_PARK_CAPACITY 500
-#define M_GROUP_SIZE 10
-#define X1_BRIDGE_CAP 9
-#define X2_TOWER_CAP 18
-#define X3_FERRY_CAP 12
-#define MAX_GROUPS 15
-```
+**Indeksy semaforów** — zorganizowane w grupy:
 
-#### Indeksy semaforów
-
-System używa złożonej tablicy semaforów z następującymi grupami:
-
-| Indeks | Nazwa | Opis |
+| Zakres | Nazwa | Opis |
 |--------|-------|------|
-| 0 | SEM_PARK_LIMIT | Limit wejść do parku |
+| 0 | SEM_PARK_LIMIT | Zarezerwowany (limit realizowany przez daily_entered_count) |
 | 1 | SEM_PRZEWODNIK | Budzenie przewodników |
-| 2 | SEM_QUEUE_MUTEX | Mutex kolejki |
-| 3 | SEM_STATS_MUTEX | Mutex statystyk |
-| 4-5 | SEM_MOST_* | Synchronizacja mostu |
-| 6-7 | SEM_WIEZA_* | Synchronizacja wieży |
-| 8 | SEM_PROM_MUTEX | Synchronizacja promu |
-| 11+ | SEM_GROUP_DONE_BASE | Semafory zakończenia atrakcji dla grup |
-| ... | SEM_TOURIST_ASSIGNED_BASE | Semafory przypisania turystów |
-| ... | SEM_MEMBER_GO_BASE | Semafory startu członków grup |
+| 2–3 | SEM_QUEUE_MUTEX, SEM_STATS_MUTEX | Mutexy danych wspólnych |
+| 4–8 | SEM_MOST_*, SEM_WIEZA_*, SEM_PROM_* | Mutexy i limity atrakcji |
+| 11–26 | SEM_GROUP_DONE_BASE (11–25), SEM_GROUP_MUTEX (26) | Synchronizacja grup |
+| 27–526 | SEM_TOURIST_ASSIGNED_BASE | Semafory przypisania turystów |
+| 527–1026 | SEM_TOURIST_READ_DONE_BASE | Semafory potwierdzenia odczytu |
+| 1027–1028 | SEM_BRIDGE_WAIT_KA/AK | Kolejkowanie kierunkowe mostu |
+| 1029–1033 | SEM_FERRY_WAIT/VIP_WAIT, SEM_FERRY_CAP | Kolejkowanie promu |
+| 1034–1048 | SEM_FERRY_GUIDE_READY_BASE | Gotowość przewodnika na promie |
+| 1049–1198 | SEM_MEMBER_GO_BASE | Budzenie członków grup |
+| 1199–1223 | SEM_QUEUE_SLOTS, SEM_GROUP_SLOTS, SEM_TOWER_*, SEM_CASH_QUEUE_*, SEM_BRIDGE_GUIDE_READY_BASE, SEM_ALL_DONE | Pozostałe |
 
-Łączna liczba semaforów: TOTAL_SEMAPHORES (~1000+)
+**Struktura komunikatu** (`struct msg_buffer`) — typ, ID turysty, PID, wiek, VIP, info.
 
-#### Struktura komunikatu kolejki
+**Struktura grupy** (`struct GroupState`) — dane aktywnej grupy: trasa, skład, opiekunowie, flagi sygnałów.
 
-```c
-struct msg_buffer {
-    long msg_type;
-    int tourist_id;
-    int age;
-    int is_vip;
-    char info[256];
-};
-```
+**Struktura pamięci dzielonej** (`struct ParkSharedMemory`) — kompletny stan parku.
 
-#### Struktura stanu grupy
-
-```c
-struct GroupState {
-    int active;
-    int guide_id;
-    pid_t guide_pid;
-    int route;
-    int size;
-    int current_attraction;
-    int attraction_step;
-    int tourists_ready;
-    pid_t member_pids[M_GROUP_SIZE];
-    int member_ids[M_GROUP_SIZE];
-    int member_ages[M_GROUP_SIZE];
-    int member_vips[M_GROUP_SIZE];
-    int member_is_caretaker[M_GROUP_SIZE];
-    int member_caretaker_of[M_GROUP_SIZE];
-    int member_has_caretaker[M_GROUP_SIZE];
-    int member_caretaker_is_guide[M_GROUP_SIZE];
-    int signal_tower_evacuate;
-    int signal_emergency_exit;
-};
-```
-
-#### Struktura pamięci dzielonej parku
-
-```c
-struct ParkSharedMemory {
-    time_t park_open_time;
-    time_t park_closing_time;
-    int park_closed;
-    
-    int total_entered, total_exited, total_expected;
-    int total_revenue, paid_entries;
-    int free_entries_vip, free_entries_children;
-    int people_in_park, vip_in_park;
-    
-    int people_in_queue, queue_head, queue_tail;
-    int queue_ages[N_PARK_CAPACITY];
-    int queue_ids[N_PARK_CAPACITY];
-    int queue_vips[N_PARK_CAPACITY];
-    pid_t queue_pids[N_PARK_CAPACITY];
-    int assigned_group_id[N_PARK_CAPACITY];
-    int assigned_member_index[N_PARK_CAPACITY];
-    
-    struct GroupState groups[MAX_GROUPS];
-    int next_group_slot;
-    
-    int bridge_on_bridge;
-    int bridge_direction;
-    int bridge_waiting[2];
-    
-    int tower_current_count;
-    pid_t tower_visitors[X2_TOWER_CAP];
-    int tower_waiting_vip, tower_waiting_normal;
-    
-    int ferry_position, ferry_passengers;
-    int ferry_on_ferry, ferry_direction;
-    int ferry_waiting_vip[2], ferry_waiting_normal[2];
-};
-```
-
-#### Funkcje pomocnicze (inline)
-
-| Funkcja | Opis |
-|---------|------|
-| report_error() | Wypisuje błąd z perror() |
-| fatal_error() | Wypisuje błąd i kończy program |
-| sem_lock() | Operacja P na semaforze |
-| sem_unlock() | Operacja V na semaforze |
-| sem_trylock() | Próba opuszczenia bez blokowania |
-| sem_getval() | Pobranie wartości semafora |
-| sem_lock_interruptible() | Opuszczenie z obsługą przerwania |
-| sem_timed_wait() | Czekanie z timeoutem |
-| ferry_enter() | Wejście na prom z kolejkowaniem |
-| ferry_leave() | Zejście z promu i budzenie czekających |
-| tower_add_visitor() | Dodanie do listy odwiedzających wieżę |
-| tower_remove_visitor() | Usunięcie z listy odwiedzających |
-| tower_has_visitor() | Sprawdzenie czy turysta jest na wieży |
-| sim_sleep() | Symulacja upływu czasu |
-| get_timestamp() | Pobranie aktualnego czasu jako string |
-| get_attraction_for_step() | Ustalenie atrakcji dla kroku trasy |
-| get_bridge_direction() | Kierunek mostu dla trasy |
-| get_ferry_direction() | Kierunek promu dla trasy |
+**Funkcje inline**:
+- `report_error()`, `fatal_error()` — obsługa błędów z `perror()`
+- `sem_use_undo()` — określenie, które semafory używają `SEM_UNDO`
+- `sem_lock()`, `sem_unlock()`, `sem_trylock()`, `sem_getval()` — operacje na semaforach (z `SEM_UNDO` dla wybranych semaforów)
+- `sem_lock_interruptible()` — opuszczenie z obsługą przerwania (EINTR + flaga)
+- `sem_timed_wait()` — czekanie z timeoutem (`semtimedop`)
+- `msgsnd_retry()` — wysyłanie do kolejki z ponowieniem po `EINTR`
+- `ferry_enter()`, `ferry_leave()` — logika kolejkowania na promie
+- `sim_sleep()` — symulacja czasu z wydłużeniem 50% dla dzieci < 12 lat
+- `get_timestamp()` — pobranie aktualnego czasu jako string (format `HH:MM:SS`)
+- `tower_add/remove/has_visitor()` — zarządzanie listą odwiedzających wieżę
+- `get_attraction_for_step()`, `get_bridge/ferry_direction()` — helpery tras
 
 ### 3.2. main.c
 
-**Odpowiedzialność:** Inicjalizacja systemu, zarządzanie procesami, cleanup.
-
-#### Główne funkcje
+**Główne funkcje:**
 
 | Funkcja | Opis |
 |---------|------|
-| cleanup() | Sprzątanie zasobów przy wyjściu |
-| handle_sigint() | Obsługa Ctrl+C |
-| handle_sigchld() | Obsługa zombie procesów |
-| get_input() | Walidacja wejścia użytkownika |
-| init_semaphores() | Inicjalizacja semaforów |
-| init_shared_memory() | Inicjalizacja pamięci dzielonej |
-| cleanup_old_ipc() | Usuwanie starych zasobów IPC |
+| `cleanup()` | Sprzątanie zasobów IPC (FIFO, kolejki, shm, sem) + SIGTERM do grupy procesów |
+| `handle_sigint()` | Obsługa Ctrl+C — bezpieczne wypisanie i exit (wywołuje atexit) |
+| `handle_sigchld()` | Zbieranie zombie procesów — `waitpid(-1, WNOHANG)` |
+| `handle_sigalrm()` | Pusty handler do wybudzenia sigsuspend |
+| `get_input()` | Walidacja danych od użytkownika (zakres, typ) |
+| `init_semaphores()` | Inicjalizacja wartości semaforów (`semctl SETVAL`) |
+| `init_shared_memory()` | Zerowanie i inicjalizacja pamięci dzielonej |
+| `cleanup_old_ipc()` | Usuwanie zasobów IPC z poprzednich uruchomień |
 
-#### Przepływ główny
-
-1. Czyszczenie starych zasobów IPC
-2. Rejestracja atexit(cleanup)
-3. Rejestracja handlerów sygnałów (SIGINT, SIGCHLD)
-4. Pobranie parametrów od użytkownika (walidacja)
-5. Utworzenie zasobów IPC (shm, sem, msg, FIFO)
-6. Fork + exec dla kasjera
-7. Fork + exec dla przewodnika-reportera
-8. Fork + exec dla P przewodników
-9. Pętla generowania turystów (fork + exec)
-10. Oczekiwanie na zakończenie wszystkich turystów
-11. Wysłanie SIGTERM do kasjera
-12. Wyświetlenie statystyk
-13. Cleanup (wywoływany przez atexit)
+**Przepływ main():**
+1. `cleanup_old_ipc()` — usunięcie starych zasobów
+2. `atexit(cleanup)` — rejestracja funkcji sprzątającej
+3. Rejestracja handlerów: SIGINT, SIGCHLD, SIGALRM
+4. Pobranie parametrów: liczba turystów, przewodników, czas, limit N
+5. Walidacja konfiguracji (np. X3_FERRY_CAP vs M_GROUP_SIZE)
+6. Tworzenie IPC: `shmget`, `semget`, `msgget` (×2), `mkfifo`
+7. `fork()` + `execl()` kasjera
+8. `fork()` + `execl()` przewodnika-reportera
+9. `fork()` + `execl()` P przewodników (w pętli)
+10. Pętla generowania N turystów: `fork()` + `execl()` z obsługą EAGAIN/ENOMEM
+11. Oczekiwanie na zakończenie (SEM_ALL_DONE)
+12. `kill(SIGTERM)` do reportera i kasjera
+13. Wyświetlenie i zapis statystyk do `park_log.txt`
+14. `shmdt()`, cleanup przez atexit
 
 ### 3.3. kasjer.c
 
-**Odpowiedzialność:** Rejestracja wejść/wyjść, logowanie, obsługa FIFO.
+**Architektura dwuprocesowa:**
+- Proces główny: odbiera komunikaty z kolejki komunikatów (MSG_TYPE_ENTRY, MSG_TYPE_EXIT)
+- Proces potomny (fork): czyta raporty przewodników z FIFO
 
-#### Architektura
-
-- Proces główny: odbiera komunikaty z kolejki
-- Proces potomny (fork): czyta raporty z FIFO
-
-#### Główne funkcje
-
-| Funkcja | Opis |
-|---------|------|
-| sigterm_handler() | Obsługa SIGTERM |
-| write_log() | Zapis do pliku logu |
-
-#### Przepływ
-
-1. Dołączenie do zasobów IPC
-2. Otwarcie pliku logu (park_log.txt)
-3. Fork procesu do obsługi FIFO
-4. Pętla odbierania komunikatów:
-   - MSG_TYPE_ENTRY - rejestracja wejścia
-   - MSG_TYPE_EXIT - rejestracja wyjścia
-5. Przy SIGTERM: opróżnienie kolejki, zakończenie procesu FIFO
+**Przepływ:**
+1. Dołączenie do IPC (`shmget`, `shmat`, `semget`, `msgget`)
+2. Otwarcie pliku logu `park_log.txt` (`open` z O_WRONLY | O_CREAT | O_APPEND)
+3. `fork()` procesu FIFO:
+   - Potomny: `open(FIFO_PATH, O_RDWR)` + pętla `read()` + logowanie
+   - Główny: pętla `msgrcv()`:
+     - MSG_TYPE_ENTRY → logowanie wejścia, aktualizacja statystyk, budzenie przewodnika dla niepełnej grupy
+     - MSG_TYPE_EXIT → logowanie wyjścia, SEM_ALL_DONE gdy wszyscy wyszli
+4. Przy SIGTERM: `IPC_NOWAIT`, opróżnienie kolejki, `kill(SIGTERM)` do procesu FIFO
 
 ### 3.4. przewodnik.c
 
-**Odpowiedzialność:** Tworzenie grup, prowadzenie wycieczek, sygnalizacja.
+**Dwa tryby pracy:**
+1. **Tryb reporter** (argument `"reporter"`) — pętla `msgrcv()` na kolejce raportowej, przekazuje MSG_TYPE_EXIT_NOTICE → MSG_TYPE_EXIT do kasy
+2. **Tryb normalny** — prowadzenie grup turystycznych
 
-#### Tryby pracy
-
-1. **Tryb normalny** - przewodnik prowadzący grupy
-2. **Tryb reporter** - przekazuje powiadomienia o wyjściach do kasy
-
-#### Główne funkcje
+**Kluczowe funkcje:**
 
 | Funkcja | Opis |
 |---------|------|
-| sigterm_handler() | Obsługa SIGTERM |
-| run_exit_reporter() | Tryb reportera |
-| send_emergency_exit() | Wysłanie SIGUSR2 do grupy |
-| send_tower_evacuation() | Wysłanie SIGUSR1 do grupy |
-| send_exit_list_to_cashier() | Raportowanie wyjść do kasy |
-| find_free_group_slot() | Szukanie wolnego slotu grupy |
-| guide_enter_bridge() | Wejście przewodnika na most |
-| guide_take_ferry() | Wejście przewodnika na prom |
+| `run_exit_reporter()` | Tryb reportera: przekazuje powiadomienia wyjść do kasy |
+| `send_emergency_exit()` | Wysyła SIGUSR2 do wszystkich w grupie |
+| `send_tower_evacuation()` | Wysyła SIGUSR1 do wszystkich w grupie |
+| `send_exit_list_to_cashier()` | Wysyła MSG_TYPE_EXIT dla każdego turysty z grupy |
+| `find_free_group_slot()` | Szuka wolnego slotu w tablicy grup |
+| `guide_enter_bridge()` | Logika wejścia przewodnika na most |
+| `guide_take_ferry()` | Logika wejścia przewodnika na prom |
 
-#### Przepływ (tryb normalny)
-
-1. Oczekiwanie na semaforze SEM_PRZEWODNIK
-2. Zajęcie slotu grupy (SEM_GROUP_SLOTS)
-3. Pobranie turystów z kolejki
-4. Przydzielenie opiekunów dla dzieci <15 lat
-5. Losowanie trasy (1 lub 2)
-6. Synchronizacja startu z turystami
-7. Pętla 3 atrakcji:
-   - Most: guide_enter_bridge() - wejście jako pierwszy
-   - Wieża: czekanie na dole
-   - Prom: guide_take_ferry() - wejście jako pierwszy
-   - Czekanie na SEM_GROUP_DONE od wszystkich turystów
-8. Raportowanie do kasy i FIFO
-9. Zwolnienie slotu grupy
-
-#### Losowe awarie (2% szans)
-
-- Przed startem wycieczki
-- W trakcie trasy (między atrakcjami)
-- Wysyłany jest SIGUSR2 do wszystkich członków grupy
-
-#### Ewakuacja z wieży (3% szans)
-
-- Wysyłany jest SIGUSR1 do wszystkich członków grupy
+**Logika tworzenia grupy:**
+- Przydzielenie opiekunów: dorosły ≥ 18 lat → opiekun dziecka < 15 lat
+- Brak opiekuna → przewodnik przejmuje rolę opiekuna (dziecko pod opieką przewodnika nie wchodzi na wieżę)
+- Losowe awarie (2% szans): przed startem lub między atrakcjami → SIGUSR2 + raport FIFO
+- Losowa ewakuacja wieży (3% szans) → SIGUSR1
 
 ### 3.5. turysta.c
 
-**Odpowiedzialność:** Symulacja zachowania turysty.
+**Handlery sygnałów** (async-signal-safe, używają `write()` zamiast `printf()`):
+- `sigusr1_handler()` — ustawia `tower_evacuation_flag`
+- `sigusr2_handler()` — ustawia `emergency_exit_flag`
+- `sigterm_handler()` — ustawia `sigterm_flag` + `emergency_exit_flag`
 
-#### Główne funkcje
+**Kluczowe funkcje:**
 
 | Funkcja | Opis |
 |---------|------|
-| sigterm_handler() | Obsługa zakończenia |
-| sigusr1_handler() | Obsługa ewakuacji z wieży |
-| sigusr2_handler() | Obsługa ewakuacji ogólnej |
-| enter_park_and_report() | Wejście do parku i raportowanie |
-| tower_acquire_slot() | Zajęcie miejsca na wieży |
-| tower_release_slot() | Zwolnienie miejsca na wieży |
-| do_bridge() | Logika przejścia przez most |
-| do_tower() | Logika zwiedzania wieży |
-| do_ferry() | Logika przepłynięcia promem |
-| do_ferry_vip() | Prom dla VIP samodzielnych |
-
-#### Przepływ (turysta grupowy)
-
-1. Losowanie atrybutów (wiek 3-70, VIP 5%)
-2. Sprawdzenie czy park otwarty
-3. Ścieżka VIP samodzielny (≥15 lat):
-   - Pominięcie kolejki
-   - Samodzielne zwiedzanie
-4. Ścieżka grupowa:
-   - Kolejka do kasy (nie-VIP)
-   - Wejście do kolejki grupowej
-   - Oczekiwanie na przypisanie do grupy
-   - Oczekiwanie na start wycieczki
-   - Pętla 3 atrakcji z synchronizacją
-5. Zgłoszenie wyjścia
-
-#### Logika mostu (do_bridge)
-
-1. Sprawdzenie flagi ewakuacji
-2. Czekanie na przewodnika (SEM_BRIDGE_GUIDE_READY)
-3. Sprawdzenie kierunku mostu:
-   - Zgodny lub pusty → wejście
-   - Przeciwny → czekanie w kolejce (SEM_BRIDGE_WAIT)
-4. Zajęcie miejsca (SEM_MOST_LIMIT)
-5. Przejście (sim_sleep)
-6. Zwolnienie miejsca
-7. Jeśli ostatni → zmiana kierunku lub reset
-
-#### Logika wieży (do_tower)
-
-1. Sprawdzenie wieku (≤5 lat → nie wchodzi)
-2. Sprawdzenie opieki (opiekun dziecka ≤5 → nie wchodzi)
-3. Zajęcie slotu (tower_acquire_slot) z priorytetem VIP
-4. Wejście po schodach (SEM_TOWER_STAIRS_UP)
-5. Dodanie do listy odwiedzających
-6. Podziwianie widoków (sem_timed_wait z obsługą SIGUSR1)
-7. Zejście po schodach (SEM_TOWER_STAIRS_DOWN)
-8. Usunięcie z listy i zwolnienie slotu
-
-#### Logika promu (do_ferry)
-
-1. Czekanie na przewodnika (SEM_FERRY_GUIDE_READY)
-2. Wejście na prom (ferry_enter) z priorytetem VIP
-3. Podróż (sim_sleep)
-4. Zejście z promu (ferry_leave)
+| `int_to_str()` | Konwersja int na string (async-signal-safe, dla handlerów) |
+| `tourist_error_ctx()` | Formatowanie kontekstu błędu z ID i PID turysty |
+| `wake_guides_for_count()` | Obliczanie i budzenie odpowiedniej liczby przewodników |
+| `enter_park_and_report()` | Aktualizacja statystyk + MSG_TYPE_ENTRY do kasy |
+| `reject_if_closed_late()` | Odrzucenie turysty po Tk z korektą statystyk |
+| `wake_guides_for_queue()` | Pobranie wielkości kolejki + wywołanie `wake_guides_for_count()` |
+| `tower_acquire_slot()` | Zajęcie miejsca na wieży z priorytetem VIP |
+| `tower_release_slot()` | Zwolnienie miejsca + budzenie czekających (VIP priorytet) |
+| `do_bridge()` | Most: kolejkowanie kierunkowe, zmiana kierunku po opróżnieniu |
+| `do_tower()` | Wieża: ograniczenia wiekowe, schody, sem_timed_wait z obsługą SIGUSR1 |
+| `do_ferry()` | Prom: czekanie na przewodnika, ferry_enter z kolejkowaniem |
+| `do_ferry_vip()` | Prom dla VIP solo: bezpośrednie ferry_enter z priorytetem |
 
 ---
 
 ## 4. Mechanizmy IPC i synchronizacji
 
-### 4.1. Pamięć dzielona (Shared Memory)
-
-#### Utworzenie
+### 4.1. Pamięć dzielona (System V Shared Memory)
 
 ```c
-shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), 
-                sizeof(struct ParkSharedMemory), IPC_CREAT | 0600);
-```
+// tworzenie (main.c)
+shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(struct ParkSharedMemory), IPC_CREAT | 0600);
 
-#### Dołączenie
-
-```c
+// dolaczenie (kazdy proces)
 struct ParkSharedMemory *park = (struct ParkSharedMemory*)shmat(shm_id, NULL, 0);
-```
 
-#### Odłączenie
-
-```c
+// odlaczenie (przy zakonczeniu)
 shmdt(park);
-```
 
-#### Usunięcie
-
-```c
+// usuniecie (cleanup w main.c)
 shmctl(shm_id, IPC_RMID, NULL);
 ```
 
-#### Zastosowanie
-
-- Przechowywanie stanu całego parku
-- Kolejka wejściowa turystów
-- Stany wszystkich grup
-- Stany atrakcji (most, wieża, prom)
-- Statystyki parku
+**Zastosowanie:** Przechowywanie całego stanu parku — kolejka turystów, grupy, atrakcje, statystyki. Minimalne prawa dostępu: `0600`.
 
 ### 4.2. Semafory (System V)
 
-#### Utworzenie
-
 ```c
+// tworzenie (main.c)
 sem_id = semget(ftok(FTOK_PATH, FTOK_SEM_ID), TOTAL_SEMAPHORES, IPC_CREAT | 0600);
-```
 
-#### Inicjalizacja
-
-```c
+// inicjalizacja (main.c init_semaphores)
 union semun arg;
 arg.val = initial_value;
 semctl(sem_id, sem_num, SETVAL, arg);
-```
 
-#### Operacje
-
-```c
-// opuszczenie (P)
-struct sembuf op = {sem_num, -1, 0};
+// opuszczenie P (common.h sem_lock)
+struct sembuf op = {sem_num, -1, sem_use_undo(sem_num) ? SEM_UNDO : 0};
 semop(sem_id, &op, 1);
 
-// podniesienie (V)
-struct sembuf op = {sem_num, 1, 0};
+// podniesienie V (common.h sem_unlock)
+struct sembuf op = {sem_num, 1, sem_use_undo(sem_num) ? SEM_UNDO : 0};
 semop(sem_id, &op, 1);
 
-// proba bez blokowania
-struct sembuf op = {sem_num, -1, IPC_NOWAIT};
+// proba bez blokowania (common.h sem_trylock)
+struct sembuf op = {sem_num, -1, IPC_NOWAIT | (sem_use_undo(sem_num) ? SEM_UNDO : 0)};
 semop(sem_id, &op, 1);
 
-// czekanie z timeoutem
+// czekanie z timeoutem (common.h sem_timed_wait)
 semtimedop(sem_id, &op, 1, &timeout);
+
+// usuniecie (cleanup w main.c)
+semctl(sem_id, 0, IPC_RMID);
 ```
 
-#### Typy semaforów używanych
+**Typy semaforów:**
 
 | Typ | Przykład | Zastosowanie |
 |-----|----------|--------------|
-| Mutex | SEM_QUEUE_MUTEX | Wyłączny dostęp do sekcji krytycznej |
-| Counting | SEM_PARK_LIMIT | Ograniczenie liczby zasobów |
-| Binary | SEM_PRZEWODNIK | Sygnalizacja zdarzenia |
-| Barrier | SEM_GROUP_DONE | Synchronizacja grupy |
+| Mutex (binary, init=1) | SEM_QUEUE_MUTEX | Wyłączny dostęp do sekcji krytycznej |
+| Counting (init=N) | SEM_MOST_LIMIT (init=9) | Ograniczenie liczby jednoczesnych dostępów |
+| Event (init=0) | SEM_PRZEWODNIK | Sygnalizacja zdarzenia (producent-konsument) |
+| Barrier (init=0) | SEM_GROUP_DONE | Synchronizacja grupy (czekanie na N zgłoszeń) |
 
-### 4.3. Kolejki komunikatów (Message Queues)
-
-#### Utworzenie
+### 4.3. Kolejki komunikatów (System V Message Queues)
 
 ```c
+// tworzenie (main.c) — dwie kolejki
 msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), IPC_CREAT | 0600);
-```
+report_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_REPORT_ID), IPC_CREAT | 0600);
 
-#### Wysyłanie
-
-```c
+// wysylanie (turysta.c, przewodnik.c) — wrapper w common.h
 struct msg_buffer msg;
-msg.msg_type = MSG_TYPE_ENTRY;
-msg.tourist_id = id;
-msgsnd(msg_id, &msg, sizeof(msg) - sizeof(long), 0);
-```
+msg.msg_type = MSG_TYPE_ENTRY;  // lub MSG_TYPE_EXIT, MSG_TYPE_EXIT_NOTICE
+msgsnd_retry(msg_id, &msg, sizeof(msg) - sizeof(long), 0);
 
-#### Odbieranie
+// odbieranie (kasjer.c, przewodnik.c reporter)
+msgrcv(msg_id, &msg, sizeof(msg) - sizeof(long), 0, flags);
 
-```c
-struct msg_buffer msg;
-msgrcv(msg_id, &msg, sizeof(msg) - sizeof(long), 0, 0);
-```
-
-#### Usunięcie
-
-```c
+// usuniecie (cleanup w main.c)
 msgctl(msg_id, IPC_RMID, NULL);
 ```
 
-#### Zastosowanie
+**Zastosowanie:**
+- Kolejka główna (`msg_id`): komunikacja turysta/przewodnik → kasjer (wejścia/wyjścia)
+- Kolejka raportowa (`report_msg_id`): turysta → reporter → kasjer (powiadomienia o wyjściach VIP)
+  
+Wysyłanie realizuje `msgsnd_retry()` — ponawia `msgsnd()` po `EINTR`.
 
-- Komunikacja turysta → kasjer (wejścia)
-- Komunikacja turysta → reporter → kasjer (wyjścia)
-
-### 4.4. FIFO (Named Pipe)
-
-#### Utworzenie
+### 4.4. FIFO (łącze nazwane)
 
 ```c
+// tworzenie (main.c)
 mkfifo(FIFO_PATH, 0600);
-```
 
-#### Otwarcie i zapis (przewodnik)
-
-```c
+// zapis (przewodnik.c)
 int fifo_fd = open(FIFO_PATH, O_WRONLY);
 write(fifo_fd, report, strlen(report));
 close(fifo_fd);
-```
 
-#### Otwarcie i odczyt (kasjer)
-
-```c
+// odczyt (kasjer.c — proces potomny)
 int fifo_fd = open(FIFO_PATH, O_RDWR);
 read(fifo_fd, buffer, sizeof(buffer) - 1);
-close(fifo_fd);
-```
 
-#### Usunięcie
-
-```c
+// usuniecie (cleanup w main.c)
 unlink(FIFO_PATH);
 ```
 
-#### Zastosowanie
-
-- Raporty przewodników o zakończonych wycieczkach
-- Raporty o awariach
+**Zastosowanie:** Raporty przewodników (zakończenie wycieczki, awarie) przesyłane do kasjera.
 
 ### 4.5. Procesy (fork + exec)
 
-#### Tworzenie procesu
-
 ```c
+// tworzenie (main.c)
 pid_t pid = fork();
 if (pid == 0) {
     execl("./program", "program", "arg1", NULL);
     fatal_error("Błąd execl");
 }
-```
 
-#### Oczekiwanie na zakończenie
-
-```c
-waitpid(pid, NULL, 0);
-waitpid(-1, NULL, WNOHANG);
+// oczekiwanie
+waitpid(pid, NULL, 0); // blokujace
+waitpid(-1, NULL, WNOHANG); // nieblokujace (SIGCHLD handler)
 ```
 
 ---
@@ -743,15 +450,18 @@ waitpid(-1, NULL, WNOHANG);
 
 ### 5.1. Zarejestrowane sygnały
 
-| Sygnał | Obsługujący | Działanie |
-|--------|-------------|-----------|
-| SIGINT | main | Przerwanie programu (Ctrl+C), cleanup |
-| SIGCHLD | main | Zbieranie zombie procesów |
-| SIGTERM | wszystkie | Graceful shutdown |
-| SIGUSR1 | turysta | Ewakuacja z wieży |
-| SIGUSR2 | turysta | Ewakuacja ogólna (powrót do kasy) |
+| Sygnał | Proces | Handler | Działanie |
+|--------|--------|---------|-----------|
+| SIGINT | main | `handle_sigint()` | Ctrl+C → bezpieczne wypisanie + `exit(0)` → atexit cleanup |
+| SIGCHLD | main | `handle_sigchld()` | Zbieranie zombie: `waitpid(-1, WNOHANG)` w pętli |
+| SIGALRM | main | `handle_sigalrm()` | Pusty handler do wybudzenia blokujących wywołań |
+| SIGTERM | kasjer | `sigterm_handler()` | Ustawienie flagi `shutdown_flag` |
+| SIGTERM | przewodnik | `sigterm_handler()` | Ustawienie flagi `shutdown_flag` |
+| SIGTERM | turysta | `sigterm_handler()` | Ustawienie `sigterm_flag` + `emergency_exit_flag` |
+| SIGUSR1 | turysta | `sigusr1_handler()` | Ewakuacja z wieży: `tower_evacuation_flag = 1` |
+| SIGUSR2 | turysta | `sigusr2_handler()` | Ewakuacja ogólna: `emergency_exit_flag = 1` |
 
-### 5.2. Rejestracja handlerów
+### 5.2. Rejestracja handlerów (sigaction)
 
 ```c
 struct sigaction sa;
@@ -761,18 +471,17 @@ sa.sa_flags = 0;
 sigaction(SIGNAL, &sa, NULL);
 ```
 
-### 5.3. Bezpieczne handlery (async-signal-safe)
+### 5.3. Async-signal-safe handlery
 
-W handlerach używane są tylko bezpieczne funkcje:
+W handlerach sygnałów używane są wyłącznie bezpieczne funkcje. Zamiast `printf()` — ręczne budowanie stringa i `write(STDOUT_FILENO, ...)`:
 
 ```c
 void sigusr1_handler(int sig) {
     (void)sig;
     tower_evacuation_flag = 1;
-    
     char msg[128];
     int pos = 0;
-    // budowanie stringa recznie
+    // reczne budowanie stringa (int_to_str)
     write(STDOUT_FILENO, msg, pos);
 }
 ```
@@ -780,10 +489,16 @@ void sigusr1_handler(int sig) {
 ### 5.4. Wysyłanie sygnałów
 
 ```c
-// do konkretnego procesu
+// SIGUSR1 do turysty (ewakuacja wiezy) — przewodnik.c
 kill(pid, SIGUSR1);
 
-// do wszystkich w grupie procesow
+// SIGUSR2 do turysty (ewakuacja ogolna) — przewodnik.c
+kill(pid, SIGUSR2);
+
+// SIGTERM do kasjera/reportera — main.c
+kill(kasjer_pid, SIGTERM);
+
+// SIGTERM do wszystkich procesow w grupie — main.c cleanup
 kill(0, SIGTERM);
 ```
 
@@ -793,76 +508,59 @@ kill(0, SIGTERM);
 
 ### 6.1. Walidacja wejścia użytkownika
 
+Funkcja `get_input()` w `main.c` sprawdza:
+- Czy wejście jest liczbą (`scanf("%d")`)
+- Czy wartość mieści się w podanym zakresie `[min, max]`
+- Czyści bufor stdin przy błędnym wejściu
+- Pętla do skutku — użytkownik musi podać poprawną wartość
+
 ```c
 int get_input(const char* prompt, int min, int max) {
     int value;
     while (1) {
-        printf(CLR_WHITE "%s (%d - %d): " CLR_RESET, prompt, min, max);
+        printf("%s (%d - %d): ", prompt, min, max);
         if (scanf("%d", &value) == 1) {
-            if (value >= min && value <= max) {
-                return value;
-            } else {
-                printf(CLR_RED "Błąd: Wartość musi być z przedziału <%d, %d>!" 
-                       CLR_RESET "\n", min, max);
-            }
+            if (value >= min && value <= max) return value;
+            printf("Błąd: Wartość musi być z przedziału <%d, %d>!\n", min, max);
         } else {
-            printf(CLR_RED "Błąd: To nie jest liczba!" CLR_RESET "\n");
+            printf("Błąd: To nie jest liczba!\n");
             while (getchar() != '\n');
         }
     }
 }
 ```
 
-### 6.2. Obsługa błędów funkcji systemowych
-
-#### Funkcje pomocnicze
-
-```c
-static inline void report_error(const char *context) {
-    perror(context);
-}
-
-static inline void fatal_error(const char *context) {
-    perror(context);
-    exit(1);
-}
-```
-
-#### Przykłady użycia
-
-```c
-// blad krytyczny - konczy program
-shm_id = shmget(ftok(FTOK_PATH, FTOK_SHM_ID), sizeof(...), IPC_CREAT | 0600);
-if (shm_id == -1) {
-    fatal_error("[MAIN] Błąd shmget");
-}
-
-// blad niekrytyczny - raportuje i kontynuuje
-if (close(fd) == -1) {
-    report_error("[KASJER] Błąd close");
-}
-
-// obsluga EINTR (przerwanie przez sygnal)
-while (semop(sem_id, &op, 1) == -1) {
-    if (errno == EINTR) {
-        continue;
-    }
-    fatal_error("Błąd semop");
-}
-```
-
-### 6.3. Walidacja konfiguracji
+### 6.2. Walidacja konfiguracji
 
 ```c
 if (X3_FERRY_CAP < M_GROUP_SIZE + 1) {
-    fprintf(stderr, CLR_RED "[MAIN] Błąd konfiguracji: X3_FERRY_CAP (%d) < "
-            "M_GROUP_SIZE+1 (%d). Prom nie pomieści grupy z przewodnikiem.\n" 
-            CLR_RESET, X3_FERRY_CAP, M_GROUP_SIZE + 1);
+    fprintf(stderr, "[MAIN] Błąd konfiguracji: X3_FERRY_CAP (%d) < M_GROUP_SIZE+1 (%d)\n", ...);
     exit(1);
 }
 ```
 
-### 6.4. Obsługa braku zasobów (fork)
+### 6.3. Obsługa błędów funkcji systemowych
+
+Dwie funkcje pomocnicze (`common.h`):
+
+```c
+static inline void report_error(const char *context) {
+    perror(context); // blad niekrytyczny
+}
+
+static inline void fatal_error(const char *context) {
+    perror(context); // blad krytyczny
+    exit(1);
+}
+```
+
+Użycie w kodzie — każde wywołanie funkcji systemowej ma sprawdzany kod powrotu:
+- `shmget`, `shmat`, `semget`, `msgget` → `fatal_error` przy -1
+- `semop` → obsługa EINTR (wznowienie), reszta → `fatal_error`
+- `fork` → obsługa EAGAIN/ENOMEM (próba odzyskania zasobów przez `waitpid`)
+- `close`, `write`, `read` → `report_error` (kontynuacja pracy)
+
+### 6.4. Obsługa braku zasobów na fork()
 
 ```c
 pid_t pid = fork();
@@ -873,10 +571,7 @@ if (pid == -1) {
             finished_tourists++;
             reaped++;
         }
-        if (reaped > 0) {
-            i--;
-            continue;
-        }
+        if (reaped > 0) { i--; continue; } // ponowna proba
     }
     report_error("[MAIN] Błąd fork");
 }
@@ -886,156 +581,61 @@ if (pid == -1) {
 
 ## 7. Elementy specjalne
 
-### 7.1. Kolorowanie wyjścia terminala
+### 7.1. Kolorowanie wyjścia terminala (kody ANSI)
 
-```c
-#define CLR_RESET "\033[0m"
-#define CLR_RED "\033[0;31m"
-#define CLR_GREEN "\033[0;32m"
-#define CLR_YELLOW "\033[0;33m"
-#define CLR_BLUE "\033[0;34m"
-#define CLR_MAGENTA "\033[0;35m"
-#define CLR_CYAN "\033[0;36m"
-#define CLR_WHITE "\033[0;37m"
-#define CLR_BOLD "\033[1m"
-#define CLR_BG_RED "\033[41m"
-```
-
-#### Użycie
-
-```c
-printf(CLR_GREEN "[PRZEWODNIK %d] Melduję się w pracy!" CLR_RESET "\n", id);
-printf(CLR_BG_RED CLR_WHITE "[AWARIA]" CLR_RESET "\n");
-```
-
-#### Schemat kolorów
+Każdy moduł ma przypisany kolor dla łatwej identyfikacji w logach:
 
 | Kolor | Zastosowanie |
 |-------|--------------|
-| Zielony | Przewodnik |
-| Cyan | Turysta |
-| Żółty | Kasjer, ostrzeżenia |
-| Magenta | VIP |
-| Czerwony | Błędy, ewakuacja |
-| Biały | Main, informacje systemowe |
+| Zielony (`\033[0;32m`) | Przewodnik |
+| Cyan (`\033[0;36m`) | Turysta |
+| Żółty (`\033[0;33m`) | Kasjer, ostrzeżenia |
+| Magenta (`\033[0;35m`) | VIP, wieża |
+| Czerwony (`\033[0;31m`) | Błędy, ewakuacja |
+| Biały (`\033[0;37m`) | Main, informacje systemowe |
+| Czerwone tło (`\033[41m`) | Awarie |
 
 ### 7.2. System opieki nad dziećmi
 
-#### Przydzielanie opiekunów
-
-```c
-for (int i = 0; i < actual_group_size; i++) {
-    if (group->member_ages[i] < 15) {
-        for (int j = 0; j < actual_group_size; j++) {
-            if (group->member_ages[j] >= 18 && !group->member_is_caretaker[j]) {
-                group->member_is_caretaker[j] = 1;
-                group->member_caretaker_of[j] = i;
-                group->member_has_caretaker[i] = j;
-                break;
-            }
-        }
-    }
-}
-
-// jesli brak opiekuna - przewodnik przejmuje opieke
-for (int i = 0; i < actual_group_size; i++) {
-    if (group->member_ages[i] < 15 && group->member_has_caretaker[i] == -1) {
-        group->member_caretaker_is_guide[i] = 1;
-    }
-}
-```
+- Automatyczne przydzielanie opiekunów: dorosły ≥ 18 lat → opiekun dziecka < 15 lat
+- Jeśli brak dorosłego — przewodnik przejmuje rolę opiekuna
+- Ograniczenia: dziecko ≤ 5 lat + opiekun nie wchodzą na wieżę
+- Dziecko pod opieką przewodnika nie wchodzi na wieżę (przewodnik czeka na dole)
 
 ### 7.3. Losowe awarie i ewakuacje
 
-#### Awaria przed/w trakcie wycieczki (2% szans)
+- **Awaria (2% szans)**: przed startem wycieczki lub między atrakcjami → SIGUSR2 do grupy + raport FIFO
+- **Ewakuacja wieży (3% szans)**: podczas pobytu grupy na wieży → SIGUSR1 do grupy
 
-```c
-if ((rand() % 100) < 2) {
-    printf(CLR_BG_RED CLR_WHITE "[PRZEWODNIK %d] Awaria!" CLR_RESET "\n", id);
-    send_emergency_exit(group, id);
-}
-```
-
-#### Ewakuacja z wieży (3% szans)
-
-```c
-if (attraction == ATTR_TOWER && (rand() % 100) < 3) {
-    send_tower_evacuation(group, park, id);
-}
-```
-
-### 7.4. Wydłużenie czasu dla grup z dziećmi
+### 7.4. Wydłużenie czasu dla grup z dziećmi < 12 lat
 
 ```c
 static inline void sim_sleep(int min_us, int max_us, int has_young_children) {
-    if (max_us <= 0) return;
     int duration = min_us + (rand() % (max_us - min_us + 1));
     if (has_young_children) {
-        duration = (int)(duration * 1.5);
+        duration = (int)(duration * 1.5); // +50%
     }
-    if (duration > 0) {
-        usleep(duration);
-    }
+    usleep(duration);
 }
 ```
 
 ### 7.5. Priorytet VIP
 
-#### Na wieży
+- **Na wieży**: VIP omija kolejkę. Normalni turyści czekają, gdy VIP oczekuje na wejście.
+- **Na promie**: VIP omija kolejkę normalnych turystów. Oddzielne semafory: `SEM_FERRY_VIP_WAIT` i `SEM_FERRY_WAIT`.
+- **Na moście**: VIP czeka jak wszyscy (zgodnie z wymaganiami).
 
-```c
-static int tower_acquire_slot(int sem_id, struct ParkSharedMemory *park, int is_vip) {
-    while (1) {
-        sem_lock(sem_id, SEM_WIEZA_MUTEX);
-        int can_enter = (park->tower_current_count < X2_TOWER_CAP);
-        if (!is_vip) {
-            can_enter = can_enter && (park->tower_waiting_vip == 0);
-        }
-        // ...
-    }
-}
-```
+### 7.6. Czyszczenie starych zasobów IPC
 
-#### Na promie
+Przy starcie programu `cleanup_old_ipc()` sprawdza i usuwa zasoby z poprzednich uruchomień (kolejki, shm, sem, FIFO), zapobiegając konfliktom.
 
-```c
-if (!is_vip && park->ferry_waiting_vip[direction] > 0) {
-    park->ferry_waiting_normal[direction]++;
-    // czekaj na SEM_FERRY_WAIT
-} else {
-    // wejdz od razu lub czekaj na SEM_FERRY_VIP_WAIT
-}
-```
+### 7.7. Zapis statystyk do pliku
 
-### 7.6. Zmiana kierunku mostu
+Po zakończeniu symulacji statystyki są wyświetlane w terminalu i zapisywane do `park_log.txt` (otwierany przez `open()` z flagami `O_WRONLY | O_CREAT | O_APPEND`).
 
-```c
-if (park->bridge_on_bridge == 0) {
-    if (park->bridge_waiting[other_dir] > 0) {
-        park->bridge_direction = other_dir;
-        int to_wake = park->bridge_waiting[other_dir];
-        park->bridge_waiting[other_dir] = 0;
-        
-        for (int i = 0; i < to_wake; i++) {
-            sem_unlock(sem_id, SEM_BRIDGE_WAIT(other_dir));
-        }
-    } else if (park->bridge_waiting[direction] == 0) {
-        park->bridge_direction = DIR_NONE;
-    }
-}
-```
+### 7.8. Niepełne grupy na koniec dnia
 
-### 7.7. Czyszczenie starych zasobów IPC
-
-```c
-void cleanup_old_ipc() {
-    int old_msg_id = msgget(ftok(FTOK_PATH, FTOK_MSG_ID), 0600);
-    if (old_msg_id != -1) {
-        msgctl(old_msg_id, IPC_RMID, NULL);
-    }
-    // podobnie dla shm, sem, FIFO...
-}
-```
+Po zamknięciu parku (Tk) lub osiągnięciu limitu N, jeśli w kolejce pozostają turyści w liczbie < M, przewodnik jest budzony aby zabrać niepełną grupę.
 
 ---
 
@@ -1226,81 +826,198 @@ Taki jak oczekiwany.
 
 ---
 
+### Test 5: "Strajk kasjera" (Przepełnienie Kolejki Komunikatów)
+
+**Cel:**  
+Weryfikacja stabilności mechanizmów IPC w sytuacji niedostępności odbiorcy wiadomości. Test sprawdza, czy funkcja systemowa msgsnd poprawnie blokuje procesy nadawcze w momencie zapełnienia systemowego bufora kolejki komunikatów, zapobiegając utracie danych i awarii programu.
+
+**Warunki początkowe:**
+Symulacja uruchomiona standardowo. W trakcie szczytowego obciążenia ręczne wysłanie sygnału zatrzymania do procesu Kasjera (kill -SIGSTOP [PID]), a po widocznym "zamrożeniu" systemu – wysłanie sygnału wznowienia (kill -SIGCONT [PID]).
+
+**Oczekiwany rezultat:**  
+Po wysłaniu SIGSTOP: Symulacja działa jeszcze przez chwilę (do momentu zapełnienia bufora jądra), a następnie całkowicie się zatrzymuje (procesy czekają na zwolnienie miejsca w kolejce).
+
+Brak błędów krytycznych, segfaultów czy komunikatów o nieudanym wysłaniu wiadomości.
+
+Po wysłaniu SIGCONT: Kasjer natychmiast "odtyka" kolejkę, następuje gwałtowny wysyp logów z zaległymi operacjami, a symulacja płynnie wraca do normalnego tempa.
+
+Statystyki końcowe zgadzają się co do jednej osoby (brak zgubionych komunikatów).
+
+**Przebieg:**
+```text
+============== STATYSTYKI PARKU ==============
+Godzina otwarcia (Tp):   13:31:34
+Godzina zamknięcia (Tk): 13:41:34
+Czas otwarcia:           600 sekund
+Limit dzienny (N):       20000
+Liczba przewodników:     10
+Wygenerowani turyści:    20000
+Weszło do parku:         20000
+Wyszło z parku:          20000
+Różnica (w parku):       0
+Bilety płatne:           17863
+Wejścia darmowe VIP:     950
+Wejścia darmowe dzieci:  1187
+Nie stworzeni:           0
+Odrzuceni po Tk:         0
+Odrzuceni (limit N):     0
+Przychód (PLN):          893150
+----------------------------------------------
+Status: Sukces - wszyscy weszli i wyszli z parku!
+==============================================
+```
+
+**Rzeczywisty rezultat:**  
+Taki jak oczekiwany.
+
+**Status:** Zaliczony
+
+---
+
+### Test 6: Losowe Zatrzymania Przewodników
+
+**Cel:**  
+Weryfikacja odporności systemu na nagłe wstrzymanie procesu będącego w trakcie wykonywania zadań (ewentualnie wewnątrz sekcji krytycznej). Test sprawdza, czy mechanizmy synchronizacji poprawnie wstrzymują inne procesy zależne od zamrożonego zasobu oraz czy po wznowieniu pracy (SIGCONT) system powraca do stabilnego stanu bez utraty danych.
+
+**Warunki początkowe:**
+Symulacja uruchomiona w trybie standardowym. Test przeprowadzany manualnie z poziomu terminala systemu Linux. Brak modyfikacji w kodzie źródłowym – testujemy skompilowany, produkcyjny kod.
+
+**Oczekiwany rezultat:**  
+Po wysłaniu SIGSTOP (-19): Proces docelowy natychmiast przestaje generować logi. Jeśli proces trzymał zasób (np. był na moście), inne procesy próbujące uzyskać ten zasób wchodzą w stan oczekiwania. Nie występuje awaria programu ani błędy IPC.
+
+Po wysłaniu SIGCONT (-18): Proces wznawia działanie dokładnie w punkcie zatrzymania. Zwolnienie zasobów następuje poprawnie, co odblokowuje kolejkę oczekujących.
+
+Finał: Statystyki wejść i wyjść zgadzają się co do jednej osoby.
+
+**Przebieg:**
+```text
+============== STATYSTYKI PARKU ==============
+Godzina otwarcia (Tp):   13:54:30
+Godzina zamknięcia (Tk): 13:59:30
+Czas otwarcia:           300 sekund
+Limit dzienny (N):       15000
+Liczba przewodników:     10
+Wygenerowani turyści:    15000
+Weszło do parku:         15000
+Wyszło z parku:          15000
+Różnica (w parku):       0
+Bilety płatne:           13404
+Wejścia darmowe VIP:     711
+Wejścia darmowe dzieci:  885
+Nie stworzeni:           0
+Odrzuceni po Tk:         0
+Odrzuceni (limit N):     0
+Przychód (PLN):          670200
+----------------------------------------------
+Status: Sukces - wszyscy weszli i wyszli z parku!
+==============================================
+```
+
+**Rzeczywisty rezultat:**  
+Taki jak oczekiwany.
+
+**Status:** Zaliczony
+
+---
+
+### Test 7: "Wierny Opiekun" (Weryfikacja parowania Turysta-Turysta)
+
+**Cel:**  
+Weryfikacja mechanizmu dobierania opiekunów wewnątrz grupy zwiedzającej. Test ma wykazać, że w przypadku dostępności dorosłych turystów w danej grupie, system priorytetyzuje przypisanie dziecka do dorosłego turysty. Kluczowym elementem testu jest sprawdzenie trwałości tego przypisania przez wszystkie etapy wycieczki: Prom, Wieżę i Most.
+
+**Warunki początkowe:**
+Modyfikacja kodu: Wymuszenie wieku w turysta.c na podstawie parzystości ID (ID nieparzyste = 5 lat, ID parzyste = 30 lat). Zapewnia to "przeplatanie się" dzieci i dorosłych w kolejce wejściowej.
+
+Parametry symulacji: 20 turystów (10 dzieci, 10 dorosłych), grupy 10-osobowe.
+
+Oczekiwany efekt: Grupy składają się z miksu dzieci i dorosłych, co pozwala na ich sparowanie.
+
+**Przebieg weryfikacji (Dowód z logów):**  
+Analiza Pary 1: Dziecko T1 + Opiekun T4
+```text
+Start (Przypisanie): [T 1 | PID 386604] Mój opiekun: [T 4 | PID 386608]
+
+Atrakcja 3 (Prom): [T 1 | PID 386604] Mam 5 lat - wsiadam na prom pod opieką [T 4 | PID 386608]
+
+Atrakcja 2 (Wieża): [T 4 | PID 386608] Jestem opiekunem dziecka [T 1 | PID 386604] (wiek 5) - nie wejdę na wieżę (Potwierdzenie, że opiekun rezygnuje z wejścia, by pilnować dziecka)
+
+Atrakcja 1 (Most): [T 1 | PID 386604] Mam 5 lat - idę przez most pod opieką [T 4 | PID 386608]
+```
+
+Analiza Pary 2: Dziecko T5 + Opiekun T8
+```text
+Start (Przypisanie): [T 5 | PID 386609] Mój opiekun: [T 8 | PID 386612]
+
+Atrakcja 3 (Prom): [T 5 | PID 386609] Mam 5 lat - wsiadam na prom pod opieką [T 8 | PID 386612]
+
+Atrakcja 2 (Wieża): [T 8 | PID 386612] Jestem opiekunem dziecka [T 5 | PID 386609] (wiek 5) - czekam na dole wieży.
+
+Atrakcja 1 (Most): [T 5 | PID 386609] Mam 5 lat - idę przez most pod opieką [T 8 | PID 386612]
+```
+
+Analiza Pary 3: Dziecko T17 + Opiekun T16
+
+```text
+Start (Przypisanie): [T 17 | PID 386621] Mój opiekun: [T 16 | PID 386620]
+
+Atrakcja 3 (Prom): [T 17 | PID 386621] Mam 5 lat - wsiadam na prom pod opieką [T 16 | PID 386620]
+
+Atrakcja 2 (Wieża): [T 16 | PID 386620] Jestem opiekunem dziecka [T 17 | PID 386621] (wiek 5) - nie wejdę na wieżę
+
+Atrakcja 1 (Most): [T 17 | PID 386621] Mam 5 lat - idę przez most pod opieką [T 16 | PID 386620]
+```
+
+**Rzeczywisty rezultat:**  
+Test potwierdził poprawność algorytmu przydzielania opieki.
+
+System poprawnie zidentyfikował dorosłych w grupie i przypisał ich do dzieci (Przewodnik nie musiał interweniować jako opiekun).
+
+Relacja Opiekun-Dziecko jest trwała: ID opiekuna zapamiętane na początku wycieczki pozostaje niezmienne aż do wyjścia z parku.
+
+Logika zachowania na Wieży (dorosły opiekun zostaje na dole z dzieckiem) zadziałała poprawnie.
+
+**Status:** Zaliczony
+
+
+---
+
 ## 9. Napotkane problemy
 
-### 9.1. Problem z liczbą semaforów
+### 9.1. Duża liczba semaforów
 
-**Opis:** System używa bardzo dużej liczby semaforów (~1000+), co może przekraczać limity systemowe.
+**Problem:** System wymaga ~1200 semaforów (per-turysta + per-grupa + atrakcje), co może przekraczać limity systemowe.
 
-**Rozwiązanie:**
-
-- Sprawdzenie limitów: `cat /proc/sys/kernel/sem`
-- Ewentualna modyfikacja: `sysctl -w kernel.sem="250 32000 100 128"`
+**Rozwiązanie:** Sprawdzenie limitów (`cat /proc/sys/kernel/sem`) i ewentualna modyfikacja (`sysctl -w kernel.sem="250 32000 100 128"`).
 
 ### 9.2. Wyścigi przy obsłudze sygnałów
 
-**Opis:** Handlery sygnałów muszą być async-signal-safe, nie mogą używać printf().
+**Problem:** Handlery sygnałów muszą być async-signal-safe — nie mogą używać `printf()`, `malloc()` ani operacji na semaforach.
 
-**Rozwiązanie:** Użycie write() z ręcznym budowaniem stringów:
-
-```c
-char msg[128];
-int pos = 0;
-// reczne budowanie stringa
-write(STDOUT_FILENO, msg, pos);
-```
+**Rozwiązanie:** Użycie `write(STDOUT_FILENO, ...)` z ręcznym budowaniem stringów (funkcja `int_to_str()` w `turysta.c`). Flagi ustawiane w handlerach to zmienne `volatile sig_atomic_t`.
 
 ### 9.3. Zombie procesy
 
-**Opis:** Przy dużej liczbie turystów mogą powstawać zombie procesy.
+**Problem:** Przy generowaniu tysięcy procesów turystów powstawały zombie procesy.
 
-**Rozwiązanie:** Handler SIGCHLD z pętlą waitpid(WNOHANG):
-
-```c
-void handle_sigchld(int sig) {
-    while (waitpid(-1, NULL, WNOHANG) > 0);
-}
-```
+**Rozwiązanie:** Handler SIGCHLD z pętlą `waitpid(-1, NULL, WNOHANG)` zbierającą zakończone procesy. Dodatkowo w pętli generowania turystów — próba odzyskania zasobów przy EAGAIN.
 
 ### 9.4. Deadlock przy ewakuacji
 
-**Opis:** Potencjalny deadlock gdy sygnał ewakuacji przychodzi w trakcie oczekiwania na semafor.
+**Problem:** Sygnał ewakuacji (SIGUSR1/SIGUSR2) mógł przyjść w trakcie blokującego `semop()`, powodując deadlock — turysta nigdy nie zgłaszał zakończenia atrakcji.
 
-**Rozwiązanie:** Funkcja sem_lock_interruptible() sprawdzająca flagę przerwania:
-
-```c
-static inline int sem_lock_interruptible(int sem_id, int sem_num, 
-                                          volatile sig_atomic_t *interrupt_flag) {
-    while (semop(sem_id, &op, 1) == -1) {
-        if (errno == EINTR) {
-            if (interrupt_flag != NULL && *interrupt_flag) {
-                return -1;
-            }
-            continue;
-        }
-        fatal_error("Błąd semop");
-    }
-    return 0;
-}
-```
+**Rozwiązanie:** Funkcja `sem_lock_interruptible()` sprawdza flagę przerwania po EINTR i zwraca -1, pozwalając turystowi pominąć atrakcję i zgłosić SEM_GROUP_DONE. Analogicznie `sem_timed_wait()` z obsługą dwóch flag.
 
 ### 9.5. Brak zasobów na fork()
 
-**Opis:** Przy generowaniu dużej liczby turystów może zabraknąć zasobów.
+**Problem:** Przy dużej liczbie turystów (20 000+) system mógł odmówić tworzenia nowych procesów (EAGAIN/ENOMEM).
 
-**Rozwiązanie:** Obsługa EAGAIN/ENOMEM z próbą odzyskania zasobów przez waitpid().
+**Rozwiązanie:** Obsługa błędu `fork()` z próbą odzyskania zasobów przez `waitpid(WNOHANG)`. Jeśli to nie pomaga — blokujące `waitpid()`. W ostateczności — kontynuacja z mniejszą liczbą turystów i korekta `total_expected`.
 
 ### 9.6. Niepełne grupy na koniec dnia
 
-**Opis:** Po zamknięciu parku mogą pozostać turyści w niepełnej grupie.
+**Problem:** Po zamknięciu parku mogły pozostać osoby w kolejce (mniej niż M), które nigdy nie zostałyby obsłużone.
 
-**Rozwiązanie:** Logika wykrywania i budzenia przewodnika dla niepełnej grupy:
-
-```c
-if ((all_entered == all_expected || park->park_closed) && queue_size > 0) {
-    // Weź niepełną grupę
-}
-```
+**Rozwiązanie:** Logika wykrywania w kasjera, main i turystach — budzenie przewodnika dla niepełnej grupy gdy `(all_entered == all_expected || park_closed) && queue_size > 0 && queue_size < M`.
 
 ---
 
@@ -1308,149 +1025,210 @@ if ((all_entered == all_expected || park->park_closed) && queue_size > 0) {
 
 ### 10.1. Co udało się zrobić
 
-- Pełna implementacja symulacji parku narodowego zgodna z wymaganiami
+- Pełna implementacja symulacji parku narodowego zgodna z opisem tematu 7
 - Wszystkie trzy atrakcje z prawidłową logiką:
-  - Most z ruchem jednokierunkowym
-  - Wieża z ograniczeniami wiekowymi i ewakuacją
-  - Prom z kolejkowaniem
-- System grup z opieką nad dziećmi
-- Obsługa VIP z priorytetami
-- Dwie trasy zwiedzania
-- Wydłużenie czasu dla grup z dziećmi <12 lat
-- Losowe awarie i ewakuacje
-- Pełna obsługa sygnałów (SIGINT, SIGCHLD, SIGTERM, SIGUSR1, SIGUSR2)
-- Walidacja danych wejściowych
-- Obsługa błędów z perror()
-- Kolorowe wyjście terminala
-- Logowanie do pliku
-- Sprzątanie zasobów IPC
-- Raportowanie przez FIFO
+  - Most z ruchem jednokierunkowym i zmianą kierunku
+  - Wieża z ograniczeniami wiekowymi, priorytetem VIP i ewakuacją (SIGUSR1)
+  - Prom z kolejkowaniem kierunkowym i priorytetem VIP
+- System grup z automatycznym przydzielaniem opiekunów
+- Obsługa VIP (pominięcie kolejki, samodzielne zwiedzanie)
+- Dwie trasy zwiedzania (losowy wybór)
+- Wydłużenie czasu o 50% dla grup z dziećmi < 12 lat
+- Pełna obsługa sygnałów (SIGINT, SIGCHLD, SIGALRM, SIGTERM, SIGUSR1, SIGUSR2)
+- Walidacja danych wejściowych od użytkownika
+- Obsługa błędów z `perror()` dla wszystkich funkcji systemowych
+- Minimalne prawa dostępu do zasobów IPC (0600)
+- Usunięcie zasobów IPC po zakończeniu (atexit + cleanup)
+- Architektura procesowa z `fork()` + `exec()`
+- Cztery mechanizmy IPC: pamięć dzielona, semafory, kolejki komunikatów, FIFO
+- Logowanie do pliku `park_log.txt`
+- Raportowanie statystyk końcowych
+- Limit dzienny N osób w parku
 
-### 10.2. Elementy dodatkowe
+### 10.2. Wykorzystane konstrukcje
 
-- Kolorowanie wyjścia terminala dla lepszej czytelności
+1. **Tworzenie i obsługa procesów** — `fork()`, `execl()`, `exit()`, `waitpid()`
+2. **Synchronizacja procesów (semafory)** — `semget()`, `semctl()`, `semop()`, `semtimedop()`
+3. **Dwa mechanizmy komunikacji** — kolejki komunikatów (`msgget/msgsnd` przez `msgsnd_retry`/`msgrcv`) + pamięć dzielona (`shmget/shmat`)
+4. **Obsługa sygnałów (dwa różne)** — SIGUSR1 (ewakuacja wieży) + SIGUSR2 (ewakuacja ogólna)
+
+### 10.3. Elementy wyróżniające
+
+- Kolorowanie wyjścia terminala (kody ANSI) — obrazujące działanie symulacji
 - System opiekunów z możliwością przejęcia opieki przez przewodnika
-- Losowe awarie z ewakuacją
-- Szczegółowe statystyki końcowe
+- Losowe awarie z pełną ewakuacją
 - Czyszczenie starych zasobów IPC przy starcie
-
-### 10.3. Możliwe usprawnienia
-
-- Dodanie interfejsu graficznego (ncurses)
-- Implementacja wątków zamiast procesów dla lepszej wydajności
-- Dodanie konfiguracji z pliku
-- Rozbudowa systemu logowania
+- Obsługa braku zasobów na `fork()` (EAGAIN/ENOMEM)
+- Async-signal-safe handlery sygnałów
 
 ---
 
 ## 11. Linki do kodu
 
+Repozytorium: https://github.com/meneluero/Projekt-SO-Park-Narodowy
+
+Commit: `80de208add08aebae62ea717a112f0583f62f87e`
+
 ### 11.1. Tworzenie i obsługa plików
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| open() | [kasjer.c#L65](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L65) | Otwarcie pliku logu |
-| close() | [kasjer.c#L247](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L247) | Zamknięcie pliku |
-| read() | [kasjer.c#L115](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L115) | Odczyt z FIFO |
-| write() | [kasjer.c#L27](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L27) | Zapis do pliku logu |
-| unlink() | [main.c#L33](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L33) | Usunięcie FIFO |
+| `open()` | [kasjer.c#L65](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L65) | Otwarcie pliku logu `park_log.txt` |
+| `open()` | [kasjer.c#L119](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L119) | Otwarcie FIFO do odczytu |
+| `open()` | [przewodnik.c#L564](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L564) | Otwarcie FIFO do zapisu (raport awarii) |
+| `open()` | [przewodnik.c#L696](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L696) | Otwarcie FIFO do zapisu (raport zakończenia) |
+| `open()` | [main.c#L550](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L550) | Otwarcie dummy FIFO (nonblock) |
+| `open()` | [main.c#L802](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L802) | Otwarcie logu do zapisu statystyk |
+| `close()` | [kasjer.c#L154](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L154) | Zamknięcie FIFO |
+| `close()` | [kasjer.c#L285](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L285) | Zamknięcie pliku logu |
+| `close()` | [przewodnik.c#L583](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L583) | Zamknięcie FIFO po raporcie awarii |
+| `close()` | [przewodnik.c#L715](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L715) | Zamknięcie FIFO po raporcie zakończenia |
+| `close()` | [main.c#L25](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L25) | Zamknięcie dummy FIFO (cleanup) |
+| `close()` | [main.c#L857](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L857) | Zamknięcie logu statystyk |
+| `read()` | [kasjer.c#L128](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L128) | Odczyt raportów z FIFO |
+| `write()` | [kasjer.c#L19](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L19) | Bezpieczne wypisanie w handlerze SIGTERM |
+| `write()` | [kasjer.c#L27](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L27) | Zapis do pliku logu |
+| `write()` | [przewodnik.c#L14](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L14) | Bezpieczne wypisanie w handlerze SIGTERM |
+| `write()` | [przewodnik.c#L579](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L579) | Zapis raportu awarii do FIFO |
+| `write()` | [przewodnik.c#L711](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L711) | Zapis raportu zakończenia do FIFO |
+| `write()` | [main.c#L114](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L114) | Bezpieczne wypisanie w handlerze SIGINT |
+| `write()` | [main.c#L853](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L853) | Zapis statystyk do logu |
+| `write()` | [turysta.c#L177](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L177) | Bezpieczne wypisanie w handlerze SIGTERM |
+| `write()` | [turysta.c#L196](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L196) | Bezpieczne wypisanie w handlerze SIGUSR1 |
+| `write()` | [turysta.c#L215](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L215) | Bezpieczne wypisanie w handlerze SIGUSR2 |
+| `unlink()` | [main.c#L33](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L33) | Usunięcie FIFO (cleanup) |
 
 ### 11.2. Tworzenie procesów
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| fork() | [main.c#L528](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L528) | Tworzenie procesu kasjera |
-| fork() | [main.c#L552](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L552) | Tworzenie procesów przewodników |
-| fork() | [main.c#L539](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L539) | Tworzenie procesów przewodników - reporterów |
-| fork() | [main.c#L596](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L596) | Tworzenie procesów turystów |
-| fork() | [kasjer.c#L98](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L98) | Tworzenie procesu FIFO |
-| execl() | [main.c#L534](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L534) | Uruchomienie programu kasjer |
-| execl() | [main.c#L560](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L560) | Uruchomienie programu przewodnik |
-| execl() | [main.c#L544](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L544) | Uruchomienie programu przewodnik - reporter|
-| execl() | [main.c#L626](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L626) | Uruchomienie programu turysta |
-| exit() | [common.h#L284](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L284) | Zakończenie przy błędzie krytycznym |
-| waitpid() | [main.c#L57](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L57) | Oczekiwanie na procesy potomne |
+| `fork()` | [main.c#L558](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L558) | Tworzenie procesu kasjera |
+| `fork()` | [main.c#L569](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L569) | Tworzenie procesu przewodnika-reportera |
+| `fork()` | [main.c#L582](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L582) | Tworzenie procesów przewodników (pętla) |
+| `fork()` | [main.c#L638](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L638) | Tworzenie procesów turystów (pętla) |
+| `fork()` | [kasjer.c#L111](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L111) | Tworzenie procesu do obsługi FIFO |
+| `execl()` | [main.c#L564](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L564) | Uruchomienie programu `kasjer` |
+| `execl()` | [main.c#L574](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L574) | Uruchomienie programu `przewodnik` (reporter) |
+| `execl()` | [main.c#L593](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L593) | Uruchomienie programu `przewodnik` |
+| `execl()` | [main.c#L671](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L671) | Uruchomienie programu `turysta` |
+| `exit()` | [common.h#L290](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L290) | Zakończenie przy błędzie krytycznym (`fatal_error`) |
+| `exit()` | [main.c#L117](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L117) | Zakończenie w handlerze SIGINT |
+| `waitpid()` | [main.c#L57](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L57) | Czekanie na procesy potomne (cleanup) |
+| `waitpid()` | [main.c#L131](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L131) | Zbieranie zombie (SIGCHLD handler, WNOHANG) |
+| `waitpid()` | [main.c#L643](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L643) | Odzyskiwanie zasobów przy EAGAIN/ENOMEM |
+| `waitpid()` | [main.c#L727](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L727) | Czekanie na zakończenie reportera |
+| `waitpid()` | [main.c#L739](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L739) | Czekanie na zakończenie kasjera |
+| `waitpid()` | [kasjer.c#L278](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L278) | Czekanie na zakończenie procesu FIFO |
 
 ### 11.3. Obsługa sygnałów
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| sigaction() | [main.c#L449](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L449) | Rejestracja SIGINT |
-| sigaction() | [main.c#L459](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L459) | Rejestracja SIGCHLD |
-| sigaction() | [turysta.c#L563](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L563) | Rejestracja SIGUSR1 |
-| sigaction() | [turysta.c#L573](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L573) | Rejestracja SIGUSR2 |
-| sigaction() | [turysta.c#L583](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L583) | Rejestracja SIGTERM |
-| kill() | [przewodnik.c#L99](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L99) | Wysłanie SIGUSR1 (ewakuacja wieży) |
-| kill() | [przewodnik.c#L79](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L79) | Wysłanie SIGUSR2 (ewakuacja ogólna) |
-| kill() | [main.c#L705](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L705) | Wysłanie SIGTERM do kasjera |
-| sigemptyset() | [turysta.c#L558](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L558) | Inicjalizacja maski sygnałów |
+| `sigaction()` | [main.c#L468](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L468) | Rejestracja SIGINT |
+| `sigaction()` | [main.c#L478](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L478) | Rejestracja SIGCHLD |
+| `sigaction()` | [main.c#L488](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L488) | Rejestracja SIGALRM |
+| `sigaction()` | [kasjer.c#L78](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L78) | Rejestracja SIGTERM (kasjer) |
+| `sigaction()` | [przewodnik.c#L279](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L279) | Rejestracja SIGTERM (reporter) |
+| `sigaction()` | [przewodnik.c#L325](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L325) | Rejestracja SIGTERM (przewodnik) |
+| `sigaction()` | [turysta.c#L662](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L662) | Rejestracja SIGUSR1 (turysta) |
+| `sigaction()` | [turysta.c#L672](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L672) | Rejestracja SIGUSR2 (turysta) |
+| `sigaction()` | [turysta.c#L682](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L682) | Rejestracja SIGTERM (turysta) |
+| `sigemptyset()` | [main.c#L464](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L464) | Inicjalizacja maski sygnałów |
+| `sigemptyset()` | [turysta.c#L657](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L657) | Inicjalizacja maski sygnałów |
+| `kill()` | [przewodnik.c#L85](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L85) | Wysłanie SIGUSR2 (ewakuacja ogólna) |
+| `kill()` | [przewodnik.c#L105](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L105) | Wysłanie SIGUSR1 (ewakuacja wieży) |
+| `kill()` | [main.c#L51](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L51) | Wysłanie SIGTERM do grupy procesów |
+| `kill()` | [main.c#L724](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L724) | Wysłanie SIGTERM do reportera |
+| `kill()` | [main.c#L734](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L734) | Wysłanie SIGTERM do kasjera |
+| `kill()` | [kasjer.c#L273](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L273) | Wysłanie SIGTERM do procesu FIFO |
+| `signal()` | [turysta.c#L163](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L163) | Reset SIGTERM do SIG_DFL |
 
 ### 11.4. Synchronizacja procesów (semafory)
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| ftok() | [main.c#L494](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L494) | Generowanie klucza IPC |
-| semget() | [main.c#L494](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L494) | Utworzenie zestawu semaforów |
-| semctl() | [main.c#L165](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L165) | Inicjalizacja semaforów |
-| semctl() | [main.c#L100](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L100) | Usunięcie semaforów |
-| semop() | [common.h#L294](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L294) | Operacja P (sem_lock) |
-| semop() | [common.h#L328](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L328) | Operacja V (sem_unlock) |
-| semop() | [common.h#L343](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L343) | Próba bez blokowania (sem_trylock) |
-| semtimedop() | [common.h#L390](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L390) | Czekanie z timeoutem |
+| `ftok()` | [main.c#L511](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L511) | Generowanie klucza IPC |
+| `semget()` | [main.c#L524](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L524) | Utworzenie zestawu semaforów |
+| `semget()` | [kasjer.c#L53](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L53) | Dołączenie do semaforów (kasjer) |
+| `semget()` | [przewodnik.c#L299](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L299) | Dołączenie do semaforów (przewodnik) |
+| `semget()` | [turysta.c#L703](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L703) | Dołączenie do semaforów (turysta) |
+| `semctl()` | [main.c#L184](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L184) | Inicjalizacja semaforów (SETVAL) |
+| `semctl()` | [main.c#L100](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L100) | Usunięcie semaforów (IPC_RMID) |
+| `semctl()` | [common.h#L394](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L394) | Pobranie wartości semafora (GETVAL) |
+| `semop()` | [common.h#L316](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L316) | Operacja P — opuszczenie (`sem_lock`) |
+| `semop()` | [common.h#L350](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L350) | Operacja V — podniesienie (`sem_unlock`) |
+| `semop()` | [common.h#L365](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L365) | Próba bez blokowania (`sem_trylock`, IPC_NOWAIT) |
+| `semop()` | [common.h#L331](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L331) | Opuszczenie z obsługą przerwania (`sem_lock_interruptible`) |
+| `semtimedop()` | [common.h#L403](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L403) | Czekanie z timeoutem (`sem_timed_wait`) |
 
 ### 11.5. Łącza nazwane (FIFO)
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| mkfifo() | [main.c#514](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L514) | Utworzenie FIFO |
-| open() | [przewodnik.c#L665](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L665) | Otwarcie FIFO do zapisu |
-| write() | [przewodnik.c#L673](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L673) | Zapis raportu do FIFO |
-| read() | [kasjer.c#L115](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L115) | Odczyt z FIFO |
+| `mkfifo()` | [main.c#L544](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L544) | Utworzenie FIFO |
+| `open()` | [przewodnik.c#L564](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L564) | Otwarcie FIFO do zapisu (O_WRONLY) |
+| `open()` | [kasjer.c#L119](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L119) | Otwarcie FIFO do odczytu (O_RDWR) |
+| `write()` | [przewodnik.c#L579](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L579) | Zapis raportu do FIFO |
+| `read()` | [kasjer.c#L128](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L128) | Odczyt raportów z FIFO |
+| `unlink()` | [main.c#L33](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L33) | Usunięcie FIFO |
 
 ### 11.6. Pamięć dzielona
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| ftok() | [main.c#L494](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L494) | Generowanie klucza IPC |
-| shmget() | [main.c#L481](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L481) | Utworzenie segmentu pamięci |
-| shmat() | [main.c#L487](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L487) | Dołączenie do pamięci (main) |
-| shmat() | [kasjer.c#L47](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L47) | Dołączenie do pamięci (kasjer) |
-| shmat() | [przewodnik.c#L282](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L282) | Dołączenie do pamięci (przewodnik) |
-| shmat() | [turysta.c#L606](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L606) | Dołączenie do pamięci (turysta) |
-| shmdt() | [turysta.c#L893](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L893) | Odłączenie od pamięci |
-| shmctl() | [main.c#L92](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L92) | Usunięcie segmentu |
+| `ftok()` | [main.c#L511](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L511) | Generowanie klucza IPC |
+| `shmget()` | [main.c#L511](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L511) | Utworzenie segmentu pamięci dzielonej |
+| `shmget()` | [kasjer.c#L42](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L42) | Dołączenie (kasjer) |
+| `shmget()` | [przewodnik.c#L289](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L289) | Dołączenie (przewodnik) |
+| `shmget()` | [turysta.c#L702](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L702) | Dołączenie (turysta) |
+| `shmat()` | [main.c#L517](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L517) | Dołączenie do pamięci (main) |
+| `shmat()` | [kasjer.c#L47](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L47) | Dołączenie do pamięci (kasjer) |
+| `shmat()` | [przewodnik.c#L294](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L294) | Dołączenie do pamięci (przewodnik) |
+| `shmat()` | [turysta.c#L711](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L711) | Dołączenie do pamięci (turysta) |
+| `shmdt()` | [main.c#L863](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L863) | Odłączenie od pamięci (main) |
+| `shmdt()` | [kasjer.c#L288](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L288) | Odłączenie od pamięci (kasjer) |
+| `shmdt()` | [przewodnik.c#L747](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L747) | Odłączenie od pamięci (przewodnik) |
+| `shmdt()` | [turysta.c#L1065](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L1065) | Odłączenie od pamięci (turysta) |
+| `shmctl()` | [main.c#L92](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L92) | Usunięcie segmentu (IPC_RMID) |
 
 ### 11.7. Kolejki komunikatów
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| ftok() | [main.c#L494](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L494) | Generowanie klucza IPC |
-| msgget() | [main.c#L502](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L502) | Utworzenie kolejki głównej |
-| msgget() | [main.c#L508](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L508) | Utworzenie kolejki raportowej |
-| msgsnd() | [turysta.c#L63](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L63) | Wysłanie komunikatu wejścia |
-| msgsnd() | [turysta.c#L874](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/turysta.c#L874) | Wysłanie powiadomienia wyjścia |
-| msgsnd() | [przewodnik.c#L119](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L119) | Wysłanie komunikatu wyjścia |
-| msgrcv() | [kasjer.c#L149](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/kasjer.c#L149) | Odbiór komunikatów |
-| msgrcv() | [przewodnik.c#L39](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/przewodnik.c#L39) | Odbiór powiadomień (reporter) |
-| msgctl() | [main.c#L74](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L74) | Usunięcie kolejki |
+| `ftok()` | [main.c#L532](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L532) | Generowanie klucza IPC |
+| `msgget()` | [main.c#L532](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L532) | Utworzenie kolejki głównej |
+| `msgget()` | [main.c#L538](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L538) | Utworzenie kolejki raportowej |
+| `msgget()` | [kasjer.c#L59](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L59) | Dołączenie do kolejki (kasjer) |
+| `msgget()` | [przewodnik.c#L21](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L21) | Dołączenie do kolejki raportowej (reporter) |
+| `msgget()` | [przewodnik.c#L26](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L26) | Dołączenie do kolejki głównej (reporter) |
+| `msgget()` | [przewodnik.c#L304](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L304) | Dołączenie do kolejki głównej (przewodnik) |
+| `msgget()` | [turysta.c#L704](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L704) | Dołączenie do kolejki głównej (turysta) |
+| `msgget()` | [turysta.c#L705](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/turysta.c#L705) | Dołączenie do kolejki raportowej (turysta) |
+| `msgsnd()` | [common.h#L383](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L383) | Wysyłanie komunikatów (wrapper `msgsnd_retry`, używany przez turystę i przewodnika) |
+| `msgrcv()` | [kasjer.c#L166](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/kasjer.c#L166) | Odbiór komunikatów (kasjer) |
+| `msgrcv()` | [przewodnik.c#L39](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/przewodnik.c#L39) | Odbiór powiadomień o wyjściach (reporter) |
+| `msgctl()` | [main.c#L74](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L74) | Usunięcie kolejki głównej (IPC_RMID) |
+| `msgctl()` | [main.c#L83](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L83) | Usunięcie kolejki raportowej (IPC_RMID) |
 
 ### 11.8. Obsługa błędów
 
 | Funkcja | Lokalizacja | Opis |
 |---------|-------------|------|
-| perror() | [common.h#L277](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L277) | Funkcja report_error() |
-| perror() | [common.h#L282](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L282) | Funkcja fatal_error() |
-| Walidacja danych | [main.c#L146](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L146) | Funkcja get_input() |
-| Obsługa EINTR | [common.h#L295](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/common.h#L295) | W sem_lock() |
-| Obsługa EAGAIN | [main.c#L598](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/52a5dfc40fee27e7720a516bb8dfbeb13e718f2c/main.c#L598) | Przy fork() |
+| `perror()` | [common.h#L283](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L283) | Funkcja `report_error()` — błąd niekrytyczny |
+| `perror()` | [common.h#L288](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L288) | Funkcja `fatal_error()` — błąd krytyczny |
+| Walidacja danych | [main.c#L151](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L151) | Funkcja `get_input()` — sprawdzenie zakresu i typu |
+| Obsługa EINTR | [common.h#L322](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L322) | Wznowienie `semop` po przerwaniu sygnałem |
+| Obsługa EINTR | [common.h#L383](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/common.h#L383) | Ponowienie `msgsnd` w `msgsnd_retry()` |
+| Obsługa EAGAIN | [main.c#L640](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L640) | Odzyskiwanie zasobów przy `fork()` |
+| Walidacja konfiguracji | [main.c#L502](https://github.com/meneluero/Projekt-SO-Park-Narodowy/blob/80de208add08aebae62ea717a112f0583f62f87e/main.c#L502) | Sprawdzenie X3_FERRY_CAP vs M_GROUP_SIZE |
 
 ---
 
 **Autor:** Wiktor Kościółek
 
-**Data:** 02.02.2026
+**Data:** 06.02.2026
 
-**Środowisko:** Ubuntu 24.04.1 LTS
+**Środowisko:** Ubuntu 24.04.1 LTS (WSL2)
 
 **Kompilator:** GCC 13.3.0
 
